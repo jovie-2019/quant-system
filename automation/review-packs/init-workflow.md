@@ -1,0 +1,52 @@
+# Review Pack Template
+
+- `change_id`:
+- `date`:
+- `owner_agent`:
+- `reviewer`: Human
+
+## 1. 审计结论（Go / No-Go）
+
+- conclusion:
+- confidence:
+
+## 2. 变更摘要（仅高价值信息）
+
+1. 核心改动点：
+2. 影响模块：
+3. 不兼容变更：
+
+## 3. 证据
+
+1. 文档一致性检查：
+2. 测试结果（单测/集成/回放/性能）：
+3. 关键指标对比（P50/P95/P99）：
+4. 发布与回滚演练结果：
+
+## 4. 风险与未决项
+
+1. 高风险点：
+2. 未解决问题：
+3. NEED_HUMAN_CONFIRMATION 项目：
+
+## 5. 人类确认记录
+
+1. 决策：
+2. 决策理由：
+3. 附加约束（若有）：
+
+## 6. 自动附加信息
+
+- generated_at: 2026-03-24 22:09:06 +0800
+- git_sha: N/A
+- changed_files:
+```text
+N/A
+```
+
+## 7. 待你确认（HITL）
+
+1. 本次变更是否涉及交易关键路径（risk/execution/orderfsm/position）
+2. 是否存在契约破坏性变更
+3. 性能是否达标（P99 阈值）
+4. 是否批准进入交付

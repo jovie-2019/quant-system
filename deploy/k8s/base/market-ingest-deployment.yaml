@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: market-ingest
+  namespace: quant-system
+  labels:
+    app: market-ingest
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: market-ingest
+  template:
+    metadata:
+      labels:
+        app: market-ingest
+    spec:
+      containers:
+        - name: market-ingest
+          image: quant-system/market-ingest:latest
+          imagePullPolicy: IfNotPresent
+          command: ["/app/market-ingest"]
+          ports:
+            - name: http
+              containerPort: 8082
+          env:
+            - name: INGEST_VENUE
+              value: "binance"
+            - name: INGEST_SYMBOLS
+              value: "BTC-USDT,ETH-USDT"
+            - name: NATS_URL
+              value: "nats://nats:4222"
+            - name: INGEST_ADDR
+              value: ":8082"
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "128Mi"

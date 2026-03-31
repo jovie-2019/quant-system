@@ -1,0 +1,34 @@
+grafana:
+  adminUser: admin
+  adminPassword: admin
+  defaultDashboardsTimezone: browser
+  # Use reachable mirror in constrained network environments.
+  image:
+    registry: docker.m.daocloud.io
+    repository: grafana/grafana
+    tag: 12.4.2
+  deploymentStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  service:
+    type: ClusterIP
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      searchNamespace: ALL
+
+prometheus:
+  prometheusSpec:
+    retention: 7d
+    scrapeInterval: 5s
+    evaluationInterval: 15s
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    ruleSelectorNilUsesHelmValues: false
+    ruleSelector: {}
+
+alertmanager:
+  enabled: true

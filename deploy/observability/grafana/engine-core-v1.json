@@ -1,0 +1,290 @@
+{
+  "id": null,
+  "uid": "engine-core-v1",
+  "title": "Engine Core V1",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 4,
+  "refresh": "10s",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Control API QPS",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PROMETHEUS"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(engine_controlapi_http_requests_total[1m]))",
+          "legendFormat": "qps"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Control API P99 Latency (ms)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PROMETHEUS"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(engine_controlapi_http_request_duration_ms_bucket[5m])))",
+          "legendFormat": "p99-ms"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "HTTP 5xx Rate",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PROMETHEUS"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(engine_controlapi_http_requests_total{status=~\"5..\"}[5m]))",
+          "legendFormat": "5xx"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Health Endpoint RPS",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PROMETHEUS"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(engine_controlapi_http_requests_total{path=\"/api/v1/health\"}[1m]))",
+          "legendFormat": "health-rps"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "TTLCache Get Hit/Miss Rate",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PROMETHEUS"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (cache, result) (rate(engine_ttlcache_get_total[5m]))",
+          "legendFormat": "{{cache}} {{result}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "TTLCache Size",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PROMETHEUS"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (cache) (engine_ttlcache_size)",
+          "legendFormat": "{{cache}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "TTLCache Eviction/Purge Rate",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PROMETHEUS"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (cache, reason) (rate(engine_ttlcache_eviction_total[5m]))",
+          "legendFormat": "evict {{cache}} {{reason}}"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (cache) (rate(engine_ttlcache_purge_total[5m]))",
+          "legendFormat": "purge {{cache}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Momentum Eval Outcome Rate",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PROMETHEUS"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (symbol, outcome) (rate(engine_strategy_momentum_eval_total[5m]))",
+          "legendFormat": "{{symbol}} {{outcome}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Momentum Eval P95 Latency (ms)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PROMETHEUS"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le, symbol) (rate(engine_strategy_momentum_eval_duration_ms_bucket[5m])))",
+          "legendFormat": "{{symbol}} p95"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Momentum Signal Rate",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PROMETHEUS"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (symbol, side) (rate(engine_strategy_momentum_signal_total[5m]))",
+          "legendFormat": "{{symbol}} {{side}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Market Ingest Event Rate",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PROMETHEUS"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (venue, result) (rate(engine_market_ingest_events_total[5m]))",
+          "legendFormat": "{{venue}} {{result}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 40
+      }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Execution Gateway Event Rate",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PROMETHEUS"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (operation, result) (rate(engine_execution_gateway_events_total[5m]))",
+          "legendFormat": "{{operation}} {{result}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 48
+      }
+    }
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "annotations": {
+    "list": []
+  }
+}

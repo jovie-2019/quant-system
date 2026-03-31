@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: engine-core
+  namespace: quant-system
+  labels:
+    app: engine-core
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: engine-core
+  template:
+    metadata:
+      labels:
+        app: engine-core
+    spec:
+      containers:
+        - name: engine-core
+          image: quant-system/engine-core:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: APP_ENV
+              value: "dev"
+            - name: NATS_URL
+              value: "nats://nats:4222"
+            - name: MYSQL_DSN
+              value: "root:root@tcp(mysql:3306)/quant?parseTime=true"
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

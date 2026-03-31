@@ -1,0 +1,13 @@
+.DS_Store
+.idea/
+.vscode/
+.local/
+tmp/
+dist/
+bin/
+coverage.out
+*.log
+*.exe
+*.dll
+*.so
+*.dylib

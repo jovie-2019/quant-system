@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: market-ingest
+  namespace: quant-system
+  labels:
+    app: market-ingest
+spec:
+  selector:
+    app: market-ingest
+  ports:
+    - name: http
+      port: 8082
+      targetPort: http

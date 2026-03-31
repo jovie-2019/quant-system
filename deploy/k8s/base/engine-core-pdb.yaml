@@ -1,0 +1,10 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: engine-core-pdb
+  namespace: quant-system
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: engine-core

@@ -1,0 +1,27 @@
+{
+  "status": "fail",
+  "generated_at": "2026-03-30 22:39:47 +0800",
+  "evidence_dir": "/Users/lama/quant-system/automation/reports/mcp-gate-selfcheck",
+  "context": {
+    "prom_url": "http://127.0.0.1:9090",
+    "grafana_url": "http://127.0.0.1:3000",
+    "kube_context": "kind-quant-dev"
+  },
+  "failures": 5,
+  "metrics": {
+    "engine_core_up": 0,
+    "strategy_runner_up": 0,
+    "nats_up": 0,
+    "mysql_up": 0,
+    "critical_firing": 0,
+    "warning_firing": 0
+  },
+  "thresholds": {
+    "min_engine_core_up": 1,
+    "min_strategy_runner_up": 1,
+    "min_nats_up": 1,
+    "min_mysql_up": 1,
+    "max_critical_firing": 0,
+    "max_warning_firing": 5
+  }
+}

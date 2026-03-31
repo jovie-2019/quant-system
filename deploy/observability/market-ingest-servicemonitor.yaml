@@ -1,0 +1,17 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: market-ingest
+  namespace: quant-system
+spec:
+  namespaceSelector:
+    matchNames:
+      - quant-system
+  selector:
+    matchLabels:
+      app: market-ingest
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 5s
+      scrapeTimeout: 3s

@@ -1,0 +1,53 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: engine-core-rules
+  namespace: quant-system
+spec:
+  groups:
+    - name: engine-core-health
+      rules:
+        - alert: EngineCorePodNotReady
+          expr: kube_deployment_status_replicas_available{namespace="quant-system",deployment="engine-core"} < 1
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "engine-core pod unavailable"
+            description: "engine-core available replicas < 1 for 2m."
+
+        - alert: ControlAPIHighP99Latency
+          expr: histogram_quantile(0.99, sum by (le) (rate(engine_controlapi_http_request_duration_ms_bucket[5m]))) > 100
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "controlapi p99 latency high"
+            description: "controlapi p99 latency is higher than 100ms in last 5m."
+
+        - alert: ExecutionErrorRateHigh
+          expr: (sum(rate(engine_execution_submit_total{outcome="error"}[5m])) / clamp_min(sum(rate(engine_execution_submit_total[5m])), 1)) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "execution submit error rate high"
+            description: "execution error ratio is above 5% in last 5m."
+
+        - alert: ExecutionGatewayRetryExhausted
+          expr: sum(rate(engine_execution_gateway_events_total{result="retry_exhausted"}[5m])) > 0
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "execution gateway retry exhausted"
+            description: "execution gateway has retry exhausted events in last 5m."
+
+        - alert: RiskRejectSpike
+          expr: sum(rate(engine_risk_decision_total{decision="reject"}[5m])) > 1
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "risk reject rate elevated"
+            description: "risk reject rate is above baseline for at least 10m."
