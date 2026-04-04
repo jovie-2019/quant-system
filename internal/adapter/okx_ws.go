@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -36,10 +35,7 @@ func NewOKXSpotWSMarketStream(cfg OKXSpotWSConfig) (*OKXSpotWSMarketStream, erro
 	}
 	return &OKXSpotWSMarketStream{
 		endpoint: strings.TrimSpace(cfg.Endpoint),
-		dialer: &websocket.Dialer{
-			Proxy:            http.ProxyFromEnvironment,
-			HandshakeTimeout: 10 * time.Second,
-		},
+		dialer: newWSDialer(),
 		wsCfg: withDefaults(wsRuntimeConfig{
 			ReconnectMin: cfg.ReconnectMin,
 			ReconnectMax: cfg.ReconnectMax,

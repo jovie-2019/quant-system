@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -35,10 +34,7 @@ func NewBinanceSpotWSMarketStream(cfg BinanceSpotWSConfig) (*BinanceSpotWSMarket
 	}
 	return &BinanceSpotWSMarketStream{
 		endpoint: strings.TrimSpace(cfg.Endpoint),
-		dialer: &websocket.Dialer{
-			Proxy:            http.ProxyFromEnvironment,
-			HandshakeTimeout: 10 * time.Second,
-		},
+		dialer: newWSDialer(),
 		wsCfg: withDefaults(wsRuntimeConfig{
 			ReconnectMin: cfg.ReconnectMin,
 			ReconnectMax: cfg.ReconnectMax,
@@ -164,10 +160,12 @@ func parseBinanceBookTicker(msg []byte) (RawMarketEvent, bool, error) {
 	if err := json.Unmarshal(msg, &payload); err != nil {
 		return RawMarketEvent{}, false, err
 	}
-	if payload.EventType == "" {
+	// Individual bookTicker streams don't include "e" field;
+	// combined streams do. Accept both formats.
+	if payload.EventType != "" && payload.EventType != "bookTicker" {
 		return RawMarketEvent{}, false, nil
 	}
-	if payload.EventType != "bookTicker" {
+	if payload.Symbol == "" {
 		return RawMarketEvent{}, false, nil
 	}
 

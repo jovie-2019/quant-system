@@ -5,11 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net"
+	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"golang.org/x/net/proxy"
 )
 
 var (
@@ -113,6 +117,34 @@ func toCanonicalFromCompactSymbol(symbol string) string {
 		return s[:len(s)-3] + "-ETH"
 	default:
 		return s
+	}
+}
+
+// newWSDialer creates a websocket.Dialer with SOCKS5 proxy support.
+// It checks ALL_PROXY / all_proxy for socks5:// URLs first,
+// then falls back to http.ProxyFromEnvironment.
+func newWSDialer() *websocket.Dialer {
+	for _, env := range []string{"ALL_PROXY", "all_proxy"} {
+		val := os.Getenv(env)
+		if strings.HasPrefix(val, "socks5://") {
+			addr := strings.TrimPrefix(val, "socks5://")
+			socks5Dialer, err := proxy.SOCKS5("tcp", addr, nil, proxy.Direct)
+			if err != nil {
+				slog.Warn("socks5 proxy init failed, falling back to default", "addr", addr, "error", err)
+				break
+			}
+			slog.Info("ws dialer using SOCKS5 proxy", "addr", addr)
+			return &websocket.Dialer{
+				NetDial: func(network, a string) (net.Conn, error) {
+					return socks5Dialer.Dial(network, a)
+				},
+				HandshakeTimeout: 10 * time.Second,
+			}
+		}
+	}
+	return &websocket.Dialer{
+		Proxy:            http.ProxyFromEnvironment,
+		HandshakeTimeout: 10 * time.Second,
 	}
 }
 
