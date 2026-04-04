@@ -111,3 +111,18 @@ export interface UpdateStrategyRequest {
   api_key_id?: number
   config?: Record<string, unknown>
 }
+
+export interface AssetBalance {
+  asset: string
+  free: number
+  locked: number
+  total: number
+}
+
+export interface AccountBalance {
+  account_id: number
+  exchange: string
+  venue: string
+  balances: AssetBalance[]
+  queried_at: string
+}

@@ -18,22 +18,70 @@
     },
     {
       "id": 1,
-      "title": "WebSocket Connection Status",
-      "type": "stat",
+      "title": "Ingest Event Rate",
+      "type": "timeseries",
       "gridPos": { "h": 6, "w": 8, "x": 0, "y": 1 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "market_ingest_ws_connected",
-          "legendFormat": "{{ venue }}",
+          "expr": "sum by (result) (rate(engine_market_ingest_events_total[1m]))",
+          "legendFormat": "{{result}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Tick Rate by Symbol",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 1 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (symbol) (rate(engine_market_tick_total[1m]))",
+          "legendFormat": "{{symbol}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Services Up",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 1 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "up{job=~\"market-ingest|engine-core|strategy-runner\"}",
+          "legendFormat": "{{job}}",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "mappings": [
-            { "type": "value", "options": { "0": { "text": "Disconnected", "color": "red" } } },
-            { "type": "value", "options": { "1": { "text": "Connected", "color": "green" } } }
+            { "type": "value", "options": { "0": { "text": "Down", "color": "red" } } },
+            { "type": "value", "options": { "1": { "text": "Up", "color": "green" } } }
           ],
           "thresholds": {
             "mode": "absolute",
@@ -52,83 +100,28 @@
       }
     },
     {
-      "id": 2,
-      "title": "Total Tick Rate",
-      "type": "timeseries",
-      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 1 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [
-        {
-          "expr": "rate(market_ingest_tick_total[1m])",
-          "legendFormat": "{{ symbol }}",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops"
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": { "displayMode": "table", "placement": "bottom" },
-        "tooltip": { "mode": "multi" }
-      }
-    },
-    {
-      "id": 3,
-      "title": "Total Reconnects",
-      "type": "stat",
-      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 1 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [
-        {
-          "expr": "market_ingest_ws_reconnects_total",
-          "legendFormat": "{{ venue }}",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 5 },
-              { "color": "red", "value": 20 }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "reduceOptions": { "calcs": ["lastNotNull"] }
-      }
-    },
-    {
       "type": "row",
-      "title": "Latency",
+      "title": "Prices",
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 },
       "collapsed": false
     },
     {
       "id": 4,
-      "title": "Latency P50",
+      "title": "BTC-USDT",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "histogram_quantile(0.5, rate(market_ingest_latency_ms_bucket[1m]))",
-          "legendFormat": "{{ symbol }}",
+          "expr": "engine_market_price{symbol=\"BTC-USDT\"}",
+          "legendFormat": "{{side}}",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "ms"
+          "unit": "currencyUSD",
+          "decimals": 2
         },
         "overrides": []
       },
@@ -139,20 +132,21 @@
     },
     {
       "id": 5,
-      "title": "Latency P99",
+      "title": "ETH-USDT",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 8, "x": 8, "y": 8 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "histogram_quantile(0.99, rate(market_ingest_latency_ms_bucket[1m]))",
-          "legendFormat": "{{ symbol }}",
+          "expr": "engine_market_price{symbol=\"ETH-USDT\"}",
+          "legendFormat": "{{side}}",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "ms"
+          "unit": "currencyUSD",
+          "decimals": 2
         },
         "overrides": []
       },
@@ -163,52 +157,46 @@
     },
     {
       "id": 6,
-      "title": "Latency Heatmap",
-      "type": "heatmap",
+      "title": "SOL-USDT",
+      "type": "timeseries",
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "rate(market_ingest_latency_ms_bucket[1m])",
-          "legendFormat": "{{ le }}",
-          "refId": "A",
-          "format": "heatmap"
+          "expr": "engine_market_price{symbol=\"SOL-USDT\"}",
+          "legendFormat": "{{side}}",
+          "refId": "A"
         }
       ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 2
+        },
+        "overrides": []
+      },
       "options": {
-        "calculate": false,
-        "yAxis": { "unit": "ms" },
-        "color": { "scheme": "Oranges" },
-        "tooltip": { "show": true }
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
       }
     },
     {
       "type": "row",
-      "title": "Prices (per symbol)",
+      "title": "More Prices",
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 },
       "collapsed": false
     },
     {
       "id": 7,
-      "title": "BTC-USDT Price",
+      "title": "BNB-USDT",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 17 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 17 },
+      "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "market_ingest_price{symbol=\"BTC-USDT\", type=\"bid\"}",
-          "legendFormat": "Bid",
+          "expr": "engine_market_price{symbol=\"BNB-USDT\"}",
+          "legendFormat": "{{side}}",
           "refId": "A"
-        },
-        {
-          "expr": "market_ingest_price{symbol=\"BTC-USDT\", type=\"ask\"}",
-          "legendFormat": "Ask",
-          "refId": "B"
-        },
-        {
-          "expr": "market_ingest_price{symbol=\"BTC-USDT\", type=\"last\"}",
-          "legendFormat": "Last",
-          "refId": "C"
         }
       ],
       "fieldConfig": {
@@ -225,25 +213,40 @@
     },
     {
       "id": 8,
-      "title": "ETH-USDT Price",
+      "title": "XRP-USDT",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 17 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 17 },
+      "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "market_ingest_price{symbol=\"ETH-USDT\", type=\"bid\"}",
-          "legendFormat": "Bid",
+          "expr": "engine_market_price{symbol=\"XRP-USDT\"}",
+          "legendFormat": "{{side}}",
           "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 2
         },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 9,
+      "title": "DOGE-USDT",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 17 },
+      "datasource": "Prometheus",
+      "targets": [
         {
-          "expr": "market_ingest_price{symbol=\"ETH-USDT\", type=\"ask\"}",
-          "legendFormat": "Ask",
-          "refId": "B"
-        },
-        {
-          "expr": "market_ingest_price{symbol=\"ETH-USDT\", type=\"last\"}",
-          "legendFormat": "Last",
-          "refId": "C"
+          "expr": "engine_market_price{symbol=\"DOGE-USDT\"}",
+          "legendFormat": "{{side}}",
+          "refId": "A"
         }
       ],
       "fieldConfig": {
@@ -260,26 +263,50 @@
     },
     {
       "type": "row",
-      "title": "Tick Rates (per symbol)",
+      "title": "Latency",
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 25 },
       "collapsed": false
     },
     {
-      "id": 9,
-      "title": "Tick Rate by Symbol",
+      "id": 10,
+      "title": "Latency P50 by Symbol",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 26 },
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
+      "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "rate(market_ingest_tick_total[1m])",
-          "legendFormat": "{{ symbol }}",
+          "expr": "histogram_quantile(0.5, sum by (le, symbol) (rate(engine_market_latency_ms_bucket[1m])))",
+          "legendFormat": "{{symbol}}",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "ops"
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 11,
+      "title": "Latency P99 by Symbol",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 26 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, symbol) (rate(engine_market_latency_ms_bucket[1m])))",
+          "legendFormat": "{{symbol}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
         },
         "overrides": []
       },

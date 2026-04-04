@@ -191,8 +191,19 @@ func (s *Server) routeAccounts(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// routeAccountByID dispatches GET/DELETE for /api/v1/accounts/{id}.
+// routeAccountByID dispatches GET/DELETE for /api/v1/accounts/{id} and sub-routes.
 func (s *Server) routeAccountByID(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/accounts/")
+
+	// Check for sub-actions: {id}/balance.
+	if parts := strings.SplitN(path, "/", 2); len(parts) == 2 {
+		switch parts[1] {
+		case "balance":
+			s.HandleGetBalance(w, r)
+			return
+		}
+	}
+
 	switch r.Method {
 	case http.MethodGet:
 		s.HandleGetAPIKey(w, r)

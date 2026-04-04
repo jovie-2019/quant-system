@@ -38,6 +38,11 @@ type OrderQueryGateway interface {
 	QueryOrder(ctx context.Context, req VenueOrderQueryRequest) (VenueOrderStatus, error)
 }
 
+// BalanceQuerier queries asset balances from an exchange account.
+type BalanceQuerier interface {
+	QueryBalance(ctx context.Context) ([]AssetBalance, error)
+}
+
 // StubMarketStream keeps compile-time boundaries stable before venue implementations.
 type StubMarketStream struct{}
 

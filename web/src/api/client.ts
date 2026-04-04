@@ -13,6 +13,7 @@ import type {
   CreateAccountRequest,
   CreateStrategyRequest,
   UpdateStrategyRequest,
+  AccountBalance,
 } from './types'
 
 const client = axios.create({
@@ -161,6 +162,13 @@ export async function updateRiskConfig(req: RiskConfig): Promise<RiskConfig> {
   return data
 }
 
+// ---- Account Balance ----
+
+export async function getAccountBalance(id: number): Promise<AccountBalance> {
+  const { data } = await client.get<AccountBalance>(`/api/v1/accounts/${id}/balance`)
+  return data
+}
+
 // ---- Overview ----
 
 export async function getOverview(): Promise<Overview> {
@@ -193,6 +201,7 @@ const api = {
   getRiskConfig,
   updateRiskConfig,
   getOverview,
+  getAccountBalance,
 }
 
 export default api

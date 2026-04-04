@@ -1,337 +1,190 @@
 {
-  "annotations": {
-    "list": []
-  },
+  "uid": "engine-k8s-status-v1",
+  "title": "Service Status",
+  "tags": ["engine-core", "status"],
+  "timezone": "browser",
   "editable": true,
-  "fiscalYearStartMonth": 0,
-  "graphTooltip": 0,
-  "id": null,
-  "links": [],
-  "liveNow": false,
+  "refresh": "5s",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
   "panels": [
     {
-      "datasource": "Prometheus",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 4,
-        "x": 16,
-        "y": 0
-      },
-      "id": 9,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "expr": "max(up{namespace=\"quant-system\",service=\"market-ingest\"} or up{namespace=\"quant-system\",job=~\".*market-ingest.*\"} or count(container_start_time_seconds{namespace=\"quant-system\",pod=~\"market-ingest-.*\",container=\"market-ingest\"})) or vector(0)",
-          "refId": "A"
-        }
-      ],
-      "title": "market-ingest up",
-      "type": "stat"
+      "type": "row",
+      "title": "Service Status",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
     },
     {
-      "datasource": "Prometheus",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 4,
-        "x": 0,
-        "y": 0
-      },
       "id": 1,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
+      "title": "Service Up/Down",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 1 },
+      "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "max(up{job=\"engine-core\"})",
+          "expr": "up",
+          "legendFormat": "{{job}}",
           "refId": "A"
         }
       ],
-      "title": "engine-core ready replicas",
-      "type": "stat"
-    },
-    {
-      "datasource": "Prometheus",
       "fieldConfig": {
         "defaults": {
-          "unit": "none"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 4,
-        "x": 4,
-        "y": 0
-      },
-      "id": 8,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "Down", "color": "red" } } },
+            { "type": "value", "options": { "1": { "text": "Up", "color": "green" } } }
           ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "expr": "max(up{job=\"strategy-runner\"})",
-          "refId": "A"
-        }
-      ],
-      "title": "strategy-runner up",
-      "type": "stat"
-    },
-    {
-      "datasource": "Prometheus",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none"
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
         },
         "overrides": []
       },
-      "gridPos": {
-        "h": 6,
-        "w": 4,
-        "x": 8,
-        "y": 0
-      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+    {
       "id": 2,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
+      "title": "Total Request Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 1 },
+      "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "max(up{job=\"blackbox-nats-health\"} or count(container_start_time_seconds{namespace=\"quant-system\",pod=~\"nats-.*\",container=\"nats\"})) or vector(0)",
+          "expr": "sum by (job) (rate(engine_controlapi_http_requests_total[1m]))",
+          "legendFormat": "{{job}}",
           "refId": "A"
         }
       ],
-      "title": "nats ready replicas",
-      "type": "stat"
-    },
-    {
-      "datasource": "Prometheus",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 4,
-        "x": 12,
-        "y": 0
-      },
-      "id": 3,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "expr": "max(up{job=\"blackbox-mysql-tcp\"} or count(container_start_time_seconds{namespace=\"quant-system\",pod=~\"mysql-.*\",container=\"mysql\"})) or vector(0)",
-          "refId": "A"
-        }
-      ],
-      "title": "mysql ready replicas",
-      "type": "stat"
-    },
-    {
-      "datasource": "Prometheus",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 4,
-        "x": 20,
-        "y": 0
-      },
-      "id": 4,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "expr": "sum(1 - up{job=~\"engine-core|strategy-runner|market-ingest|blackbox-engine-core-health|blackbox-nats-health|blackbox-mysql-tcp\"})",
-          "refId": "A"
-        }
-      ],
-      "title": "unhealthy targets",
-      "type": "stat"
-    },
-    {
-      "datasource": "Prometheus",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ms"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 6
-      },
-      "id": 5,
-      "targets": [
-        {
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(engine_controlapi_http_request_duration_ms_bucket[5m])))",
-          "legendFormat": "controlapi p99",
-          "refId": "A"
-        }
-      ],
-      "title": "controlapi latency p99",
-      "type": "timeseries"
-    },
-    {
-      "datasource": "Prometheus",
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percentunit"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 6
-      },
-      "id": 6,
-      "targets": [
-        {
-          "expr": "(sum(rate(engine_controlapi_http_requests_total{status=~\"5..\"}[5m])) or vector(0)) / clamp_min((sum(rate(engine_controlapi_http_requests_total[5m])) or vector(0)),1)",
-          "legendFormat": "execution error rate",
-          "refId": "A"
-        }
-      ],
-      "title": "controlapi 5xx ratio",
-      "type": "timeseries"
-    },
-    {
-      "datasource": "Prometheus",
       "fieldConfig": {
         "defaults": {
           "unit": "ops"
         },
         "overrides": []
       },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 14
-      },
-      "id": 7,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Risk & Execution",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 },
+      "collapsed": false
+    },
+    {
+      "id": 3,
+      "title": "Risk Decision Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
+      "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "sum by (status) (rate(engine_controlapi_http_requests_total[5m]))",
-          "legendFormat": "{{status}}",
+          "expr": "sum by (decision) (rate(engine_risk_decision_total[1m]))",
+          "legendFormat": "{{decision}}",
           "refId": "A"
         }
       ],
-      "title": "controlapi status rate",
-      "type": "timeseries"
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Execution Submit Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(engine_execution_submit_total[1m]))",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Control API P99 Latency",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(engine_controlapi_http_request_duration_ms_bucket[5m])))",
+          "legendFormat": "p99",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Cache",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 },
+      "collapsed": false
+    },
+    {
+      "id": 6,
+      "title": "TTL Cache Size",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 17 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "engine_ttlcache_size",
+          "legendFormat": "{{cache}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
     }
-  ],
-  "refresh": "10s",
-  "schemaVersion": 39,
-  "style": "dark",
-  "tags": [
-    "engine-core",
-    "k8s",
-    "status"
   ],
   "templating": {
     "list": []
   },
-  "time": {
-    "from": "now-6h",
-    "to": "now"
-  },
-  "timepicker": {},
-  "timezone": "browser",
-  "title": "engine-core-k8s-status-v1",
-  "uid": "engine-k8s-status-v1",
-  "version": 2,
-  "weekStart": ""
+  "schemaVersion": 39,
+  "version": 1
 }

@@ -9,6 +9,7 @@ import Strategies from './pages/Strategies'
 import Positions from './pages/Positions'
 import Orders from './pages/Orders'
 import RiskConfig from './pages/RiskConfig'
+import Assets from './pages/Assets'
 import Settings from './pages/Settings'
 import ProtectedRoute from './components/ProtectedRoute'
 
@@ -26,6 +27,7 @@ export default function App() {
             <Route path="/positions" element={<Positions />} />
             <Route path="/orders" element={<Orders />} />
             <Route path="/risk-config" element={<RiskConfig />} />
+            <Route path="/assets" element={<Assets />} />
             <Route path="/settings" element={<Settings />} />
           </Route>
         </Route>

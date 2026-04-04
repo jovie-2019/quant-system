@@ -9,6 +9,7 @@ import {
   FundOutlined,
   OrderedListOutlined,
   SafetyOutlined,
+  WalletOutlined,
   SettingOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
@@ -26,6 +27,7 @@ const menuItems = [
   { key: '/positions', icon: <FundOutlined />, label: '持仓' },
   { key: '/orders', icon: <OrderedListOutlined />, label: '订单' },
   { key: '/risk-config', icon: <SafetyOutlined />, label: '风控配置' },
+  { key: '/assets', icon: <WalletOutlined />, label: '账户资产' },
   { key: '/settings', icon: <SettingOutlined />, label: '系统设置' },
 ]
 
