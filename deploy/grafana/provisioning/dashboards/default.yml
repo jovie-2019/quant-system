@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: quant-system
+    folder: quant-system
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards/quant

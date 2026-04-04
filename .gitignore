@@ -11,3 +11,6 @@ coverage.out
 *.dll
 *.so
 *.dylib
+.env
+web/node_modules/
+web/dist/

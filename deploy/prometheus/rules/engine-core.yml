@@ -1,0 +1,38 @@
+groups:
+  - name: engine-core
+    rules:
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} is down"
+          description: "{{ $labels.job }} has been down for more than 1 minute"
+
+      - alert: HighRiskRejectRate
+        expr: rate(engine_risk_decision_total{decision="reject"}[5m]) > 0.5
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High risk rejection rate"
+          description: "Risk rejection rate is {{ $value }}/s over the last 5 minutes"
+
+      - alert: ExecutionErrorRate
+        expr: rate(engine_execution_submit_total{outcome="error"}[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Execution error rate elevated"
+          description: "Execution error rate is {{ $value }}/s over the last 5 minutes"
+
+      - alert: HighControlAPILatency
+        expr: histogram_quantile(0.99, rate(engine_controlapi_http_request_duration_ms_bucket[5m])) > 100
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Control API P99 latency > 100ms"
+          description: "P99 latency is {{ $value }}ms"
