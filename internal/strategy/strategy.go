@@ -64,6 +64,27 @@ func (r *InMemoryRuntime) Register(s Strategy) error {
 	return nil
 }
 
+// Unregister removes a strategy by ID. It is a no-op if the ID is not found.
+func (r *InMemoryRuntime) Unregister(id string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.strategies, id)
+}
+
+// Replace atomically removes the old strategy and registers the new one.
+func (r *InMemoryRuntime) Replace(old Strategy, newS Strategy) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	delete(r.strategies, old.ID())
+	newID := newS.ID()
+	if _, exists := r.strategies[newID]; exists {
+		return fmt.Errorf("%w: %s", ErrStrategyExists, newID)
+	}
+	r.strategies[newID] = newS
+	return nil
+}
+
 func (r *InMemoryRuntime) HandleMarket(ctx context.Context, evt contracts.MarketNormalizedEvent) error {
 	r.mu.RLock()
 	strategies := make([]Strategy, 0, len(r.strategies))

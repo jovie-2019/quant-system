@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,26 +16,93 @@ import (
 	"syscall"
 	"time"
 
+	"quant-system/internal/adminstore"
 	"quant-system/internal/bus/natsbus"
 	"quant-system/internal/obs/logging"
 	"quant-system/internal/obs/metrics"
+	"quant-system/internal/store/mysqlstore"
 	"quant-system/internal/strategy"
-	momentum "quant-system/internal/strategy/momentum"
 	"quant-system/internal/strategyrunner"
+
+	// Blank-import strategy packages to trigger init() registration.
+	_ "quant-system/internal/strategy/momentum"
 )
 
 func main() {
 	logging.Init()
 
-	natsURL := getenv("NATS_URL", "nats://127.0.0.1:4222")
-	runnerAddr := getenv("STRATEGY_RUNNER_ADDR", ":8081")
-	durable := getenv("STRATEGY_RUNNER_DURABLE", "strategy-runner")
-	subject := getenv("STRATEGY_RUNNER_SUBJECT", "market.normalized.spot.>")
-	deliverPolicy := getenv("NATS_DELIVER_POLICY", "all")
+	// -----------------------------------------------------------------------
+	// Required env vars
+	// -----------------------------------------------------------------------
+	configIDStr := os.Getenv("STRATEGY_CONFIG_ID")
+	if configIDStr == "" {
+		slog.Error("STRATEGY_CONFIG_ID is required")
+		os.Exit(1)
+	}
+	configID, err := strconv.ParseInt(configIDStr, 10, 64)
+	if err != nil {
+		slog.Error("STRATEGY_CONFIG_ID must be an integer", "value", configIDStr, "error", err)
+		os.Exit(1)
+	}
 
+	mysqlDSN := os.Getenv("MYSQL_DSN")
+	if mysqlDSN == "" {
+		slog.Error("MYSQL_DSN is required")
+		os.Exit(1)
+	}
+
+	natsURL := getenv("NATS_URL", "nats://nats:4222")
+	runnerAddr := getenv("STRATEGY_RUNNER_ADDR", ":8081")
+
+	// -----------------------------------------------------------------------
+	// MySQL
+	// -----------------------------------------------------------------------
+	db, err := mysqlstore.Open(mysqlstore.Config{DSN: mysqlDSN})
+	if err != nil {
+		slog.Error("mysql open failed", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	store, err := adminstore.NewStore(db)
+	if err != nil {
+		slog.Error("adminstore init failed", "error", err)
+		os.Exit(1)
+	}
+
+	// -----------------------------------------------------------------------
+	// Load initial strategy config from DB
+	// -----------------------------------------------------------------------
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cfg, found, err := store.GetStrategyConfig(ctx, configID)
+	if err != nil {
+		slog.Error("load strategy config failed", "config_id", configID, "error", err)
+		os.Exit(1)
+	}
+	if !found {
+		slog.Error("strategy config not found", "config_id", configID)
+		os.Exit(1)
+	}
+	if cfg.Status == "stopped" {
+		slog.Info("strategy config is stopped, exiting", "config_id", configID)
+		os.Exit(0)
+	}
+
+	slog.Info("loaded strategy config",
+		"config_id", cfg.ID,
+		"strategy_id", cfg.StrategyID,
+		"strategy_type", cfg.StrategyType,
+		"status", cfg.Status,
+	)
+
+	// -----------------------------------------------------------------------
+	// NATS
+	// -----------------------------------------------------------------------
 	client, err := natsbus.Connect(natsbus.Config{
 		URL:  natsURL,
-		Name: "strategy-runner",
+		Name: fmt.Sprintf("strategy-runner-%d", configID),
 	})
 	if err != nil {
 		slog.Error("nats connect failed", "error", err)
@@ -40,11 +110,14 @@ func main() {
 	}
 	defer client.Close()
 
-	if err := ensureStreams(context.Background(), client); err != nil {
+	if err := ensureStreams(ctx, client); err != nil {
 		slog.Error("ensure stream failed", "error", err)
 		os.Exit(1)
 	}
 
+	// -----------------------------------------------------------------------
+	// Strategy runtime
+	// -----------------------------------------------------------------------
 	intentSink, err := strategyrunner.NewNATSIntentSink(client)
 	if err != nil {
 		slog.Error("intent sink init failed", "error", err)
@@ -56,36 +129,39 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Register momentum strategy if configured.
-	if sym := os.Getenv("MOMENTUM_SYMBOL"); sym != "" {
-		strat := momentum.New(momentum.Config{
-			Symbol:            sym,
-			WindowSize:        getenvInt("MOMENTUM_WINDOW_SIZE", 20),
-			BreakoutThreshold: getenvFloat("MOMENTUM_BREAKOUT_THRESHOLD", 0.001),
-			OrderQty:          getenvFloat("MOMENTUM_ORDER_QTY", 0.01),
-			TimeInForce:       getenv("MOMENTUM_TIME_IN_FORCE", "IOC"),
-			Cooldown:          time.Duration(getenvInt("MOMENTUM_COOLDOWN_MS", 5000)) * time.Millisecond,
-		})
-		if err := runtime.Register(strat); err != nil {
-			slog.Error("register momentum strategy failed", "error", err)
-			os.Exit(1)
-		}
-		slog.Info("registered momentum strategy", "symbol", sym)
+	// Create and register the initial strategy instance.
+	currentStrategy, err := createStrategy(cfg)
+	if err != nil {
+		slog.Error("create strategy failed", "error", err)
+		os.Exit(1)
 	}
+	if err := runtime.Register(currentStrategy); err != nil {
+		slog.Error("register strategy failed", "error", err)
+		os.Exit(1)
+	}
+
+	slog.Info("strategy registered",
+		"strategy_id", currentStrategy.ID(),
+		"strategy_type", cfg.StrategyType,
+	)
+
+	// -----------------------------------------------------------------------
+	// NATS subscription loop (market events -> strategy)
+	// -----------------------------------------------------------------------
+	durable := fmt.Sprintf("strategy-runner-%d", configID)
+	subject := getenv("STRATEGY_RUNNER_SUBJECT", "market.normalized.spot.>")
+	deliverPolicy := getenv("NATS_DELIVER_POLICY", "all")
 
 	loop, err := strategyrunner.NewLoop(client, runtime, strategyrunner.Config{
 		Subject:       subject,
 		Durable:       durable,
-		Queue:         "strategy-runner",
+		Queue:         fmt.Sprintf("strategy-runner-%d", configID),
 		DeliverPolicy: deliverPolicy,
 	})
 	if err != nil {
 		slog.Error("loop init failed", "error", err)
 		os.Exit(1)
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	sub, err := loop.Start(ctx)
 	if err != nil {
@@ -94,31 +170,121 @@ func main() {
 	}
 	defer sub.Unsubscribe()
 
+	// -----------------------------------------------------------------------
+	// HTTP health + metrics endpoint
+	// -----------------------------------------------------------------------
 	server := &http.Server{
 		Addr:              runnerAddr,
-		Handler:           newHTTPHandler(),
+		Handler:           newHTTPHandler(configID, db),
 		ReadHeaderTimeout: 2 * time.Second,
 	}
 
 	go func() {
-		slog.Info("strategy-runner listening", "addr", runnerAddr)
+		slog.Info("strategy-runner listening", "addr", runnerAddr, "config_id", configID)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("http server failed", "error", err)
 			os.Exit(1)
 		}
 	}()
 
+	// -----------------------------------------------------------------------
+	// Config poll loop + signal handling
+	// -----------------------------------------------------------------------
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	<-sigCh
 
+	currentConfigHash := hashString(cfg.ConfigJSON)
+
+	pollTicker := time.NewTicker(5 * time.Second)
+	defer pollTicker.Stop()
+
+	for {
+		select {
+		case <-sigCh:
+			slog.Info("received shutdown signal", "config_id", configID)
+			goto shutdown
+
+		case <-ctx.Done():
+			goto shutdown
+
+		case <-pollTicker.C:
+			newCfg, found, err := store.GetStrategyConfig(ctx, configID)
+			if err != nil {
+				slog.Warn("config poll failed", "config_id", configID, "error", err)
+				continue
+			}
+			if !found {
+				slog.Warn("strategy config disappeared from DB, shutting down", "config_id", configID)
+				goto shutdown
+			}
+
+			// Check for stop signal.
+			if newCfg.Status == "stopped" {
+				slog.Info("strategy status changed to stopped, shutting down",
+					"config_id", configID,
+					"strategy_id", newCfg.StrategyID,
+				)
+				goto shutdown
+			}
+
+			// Check for config change (hot-reload).
+			newHash := hashString(newCfg.ConfigJSON)
+			if newHash != currentConfigHash {
+				slog.Info("config_json changed, hot-reloading strategy",
+					"config_id", configID,
+					"strategy_type", newCfg.StrategyType,
+					"old_hash", currentConfigHash,
+					"new_hash", newHash,
+				)
+
+				newStrategy, err := createStrategy(newCfg)
+				if err != nil {
+					slog.Error("hot-reload: create strategy failed, keeping old strategy",
+						"error", err,
+					)
+					continue
+				}
+
+				if err := runtime.Replace(currentStrategy, newStrategy); err != nil {
+					slog.Error("hot-reload: replace strategy failed",
+						"error", err,
+					)
+					continue
+				}
+
+				currentStrategy = newStrategy
+				currentConfigHash = newHash
+
+				slog.Info("strategy hot-reloaded successfully",
+					"strategy_id", currentStrategy.ID(),
+					"strategy_type", newCfg.StrategyType,
+				)
+			}
+		}
+	}
+
+shutdown:
 	cancel()
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		slog.Error("shutdown failed", "error", err)
-		os.Exit(1)
+		slog.Error("http shutdown failed", "error", err)
 	}
+	slog.Info("strategy-runner stopped", "config_id", configID)
+}
+
+// createStrategy looks up the strategy type in the registry and creates an instance.
+func createStrategy(cfg adminstore.StrategyConfig) (strategy.Strategy, error) {
+	ctor, ok := strategy.Lookup(cfg.StrategyType)
+	if !ok {
+		return nil, fmt.Errorf("unknown strategy type %q (registered: %v)",
+			cfg.StrategyType, strategy.RegisteredTypes())
+	}
+	s, err := ctor(json.RawMessage(cfg.ConfigJSON))
+	if err != nil {
+		return nil, fmt.Errorf("create strategy %q: %w", cfg.StrategyType, err)
+	}
+	return s, nil
 }
 
 func ensureStreams(ctx context.Context, client *natsbus.Client) error {
@@ -144,31 +310,20 @@ func getenv(key, fallback string) string {
 	return fallback
 }
 
-func getenvInt(key string, fallback int) int {
-	if value := os.Getenv(key); value != "" {
-		if n, err := strconv.Atoi(value); err == nil {
-			return n
-		}
-	}
-	return fallback
+func hashString(s string) string {
+	h := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(h[:])
 }
 
-func getenvFloat(key string, fallback float64) float64 {
-	if value := os.Getenv(key); value != "" {
-		if f, err := strconv.ParseFloat(value, 64); err == nil {
-			return f
-		}
-	}
-	return fallback
-}
-
-func newHTTPHandler() http.Handler {
+func newHTTPHandler(configID int64, db *sql.DB) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"status": "ok",
+			"status":    "ok",
+			"config_id": configID,
+			"types":     strategy.RegisteredTypes(),
 		})
 	})
 	mux.HandleFunc("/metrics", func(w http.ResponseWriter, _ *http.Request) {

@@ -12,7 +12,7 @@ import {
   Space,
   Spin,
 } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import api from '../api/client';
 import type { Exchange, APIKey, StrategyConfig } from '../api/types';
@@ -30,6 +30,7 @@ const Strategies: React.FC = () => {
   const [actionLoading, setActionLoading] = useState<Record<number, boolean>>(
     {},
   );
+  const [stopAllLoading, setStopAllLoading] = useState(false);
   const [form] = Form.useForm();
 
   const selectedExchangeId = Form.useWatch('exchange_id', form);
@@ -59,6 +60,29 @@ const Strategies: React.FC = () => {
   useEffect(() => {
     fetchData();
   }, []);
+
+  const handleStopAll = () => {
+    Modal.confirm({
+      title: '紧急停止所有策略',
+      icon: <ExclamationCircleOutlined />,
+      content: '确认停止所有运行中的策略？此操作不可撤销。',
+      okText: '确认停止',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        setStopAllLoading(true);
+        try {
+          const result = await api.stopAllStrategies();
+          message.success(`已停止 ${result.stopped_count} 个策略`);
+          fetchData();
+        } catch {
+          message.error('停止所有策略失败');
+        } finally {
+          setStopAllLoading(false);
+        }
+      },
+    });
+  };
 
   const openCreate = () => {
     setEditingRecord(null);
@@ -248,9 +272,17 @@ const Strategies: React.FC = () => {
 
   return (
     <div>
-      <div style={{ marginBottom: 16 }}>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
           新增策略
+        </Button>
+        <Button
+          danger
+          icon={<ExclamationCircleOutlined />}
+          loading={stopAllLoading}
+          onClick={handleStopAll}
+        >
+          紧急停止所有策略
         </Button>
       </div>
 

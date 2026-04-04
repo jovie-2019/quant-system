@@ -114,6 +114,7 @@ func (s *Server) Handler() http.Handler {
 	auth.HandleFunc("/api/v1/accounts/", s.routeAccountByID)
 
 	// Strategies.
+	auth.HandleFunc("/api/v1/strategies/stop-all", s.HandleStopAll)
 	auth.HandleFunc("/api/v1/strategies", s.routeStrategies)
 	auth.HandleFunc("/api/v1/strategies/", s.routeStrategyByID)
 
@@ -219,6 +220,12 @@ func (s *Server) routeStrategies(w http.ResponseWriter, r *http.Request) {
 // routeStrategyByID dispatches GET/PUT/DELETE and sub-actions for /api/v1/strategies/{id}.
 func (s *Server) routeStrategyByID(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/v1/strategies/")
+
+	// Handle stop-all (routed here because /strategies/ pattern matches first).
+	if path == "stop-all" {
+		s.HandleStopAll(w, r)
+		return
+	}
 
 	// Check for sub-actions: {id}/start or {id}/stop.
 	if parts := strings.SplitN(path, "/", 2); len(parts) == 2 {

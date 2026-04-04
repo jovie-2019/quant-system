@@ -130,6 +130,11 @@ export async function stopStrategy(id: number): Promise<{ status: string; strate
   return data
 }
 
+export async function stopAllStrategies(): Promise<{ stopped_count: number; message: string }> {
+  const { data } = await client.post<{ stopped_count: number; message: string }>('/api/v1/strategies/stop-all')
+  return data
+}
+
 // ---- Positions ----
 
 export async function getPositions(): Promise<Position[]> {
@@ -182,6 +187,7 @@ const api = {
   deleteStrategy,
   startStrategy,
   stopStrategy,
+  stopAllStrategies,
   getPositions,
   getOrders,
   getRiskConfig,
