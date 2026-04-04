@@ -1,0 +1,38 @@
+groups:
+  - name: market-ingest
+    rules:
+      - alert: MarketLatencyHigh
+        expr: histogram_quantile(0.99, rate(market_ingest_latency_ms_bucket[1m])) > 500
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Market data latency P99 > 500ms"
+          description: "{{ $labels.venue }}/{{ $labels.symbol }} P99 latency is {{ $value }}ms"
+
+      - alert: MarketLatencyCritical
+        expr: histogram_quantile(0.99, rate(market_ingest_latency_ms_bucket[1m])) > 2000
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Market data latency P99 > 2s"
+          description: "{{ $labels.venue }}/{{ $labels.symbol }} P99 latency is {{ $value }}ms"
+
+      - alert: MarketTickRateZero
+        expr: rate(market_ingest_tick_total[1m]) == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Market tick rate is zero"
+          description: "{{ $labels.venue }}/{{ $labels.symbol }} has received no ticks for 30s"
+
+      - alert: MarketWSDisconnected
+        expr: market_ingest_ws_connected == 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Market WebSocket disconnected"
+          description: "{{ $labels.venue }} WebSocket has been disconnected for 1 minute"

@@ -159,6 +159,18 @@ services:
       timeout: 5s
       retries: 5
 
+  # cadvisor:
+  #   image: gcr.io/cadvisor/cadvisor:v0.49.1
+  #   ports:
+  #     - "8888:8080"
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock:ro
+  #     - /sys:/sys:ro
+  #     - /var/lib/docker/:/var/lib/docker:ro
+  #   networks:
+  #     - quant-net
+  #   restart: unless-stopped
+
 volumes:
   mysql-data:
   nats-data:

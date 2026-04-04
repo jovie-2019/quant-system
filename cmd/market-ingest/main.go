@@ -94,6 +94,15 @@ func main() {
 					slog.Debug("normalize failed", "error", err, "venue", raw.Venue, "symbol", raw.Symbol)
 					continue
 				}
+
+				// Emit market data quality metrics.
+				latencyMS := float64(time.Now().UnixMilli() - evt.SourceTSMS)
+				metrics.ObserveMarketLatency(venue, evt.Symbol, latencyMS)
+				metrics.SetMarketPrice(venue, evt.Symbol, "bid", evt.BidPX)
+				metrics.SetMarketPrice(venue, evt.Symbol, "ask", evt.AskPX)
+				metrics.SetMarketPrice(venue, evt.Symbol, "last", evt.LastPX)
+				metrics.ObserveMarketTickRate(venue, evt.Symbol)
+
 				if err := natsbus.PublishMarketNormalized(ctx, client, evt, nil); err != nil {
 					dropped++
 					metrics.ObserveMarketIngest(venue, "publish_error")

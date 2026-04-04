@@ -2,11 +2,14 @@ package metrics
 
 import (
 	"fmt"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 )
+
+var startTime = time.Now()
 
 var defaultRegistry = NewRegistry()
 
@@ -52,6 +55,100 @@ func ObserveMomentumEvaluation(symbol, outcome string, duration time.Duration) {
 
 func ObserveMarketIngest(venue, result string) {
 	defaultRegistry.ObserveMarketIngest(venue, result)
+}
+
+// ObserveMarketLatency records the end-to-end latency of a market data tick in milliseconds.
+func ObserveMarketLatency(venue, symbol string, latencyMS float64) {
+	defaultRegistry.ObserveMarketLatency(venue, symbol, latencyMS)
+}
+
+// SetMarketPrice sets the latest observed market price gauge for venue/symbol/side.
+func SetMarketPrice(venue, symbol, side string, price float64) {
+	defaultRegistry.SetMarketPrice(venue, symbol, side, price)
+}
+
+// SetMarketWSConnected sets the WebSocket connection status gauge for a venue.
+func SetMarketWSConnected(venue string, connected bool) {
+	defaultRegistry.SetMarketWSConnected(venue, connected)
+}
+
+// ObserveMarketWSReconnect increments the WebSocket reconnection counter for a venue.
+func ObserveMarketWSReconnect(venue string) {
+	defaultRegistry.ObserveMarketWSReconnect(venue)
+}
+
+// ObserveMarketTickRate increments the market tick counter for a venue/symbol pair.
+func ObserveMarketTickRate(venue, symbol string) {
+	defaultRegistry.ObserveMarketTickRate(venue, symbol)
+}
+
+// ExposeGoRuntime collects Go runtime metrics and returns them in Prometheus text format.
+func ExposeGoRuntime() string {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+
+	var gcPauseSumNs uint64
+	for _, p := range m.PauseNs {
+		gcPauseSumNs += p
+	}
+	var lastPauseNs uint64
+	if m.NumGC > 0 {
+		lastPauseNs = m.PauseNs[(m.NumGC-1)%256]
+	}
+
+	// Go stdlib does not expose the OS thread count directly.
+	// We report GOMAXPROCS as the schedulable thread count.
+	numThreads := runtime.GOMAXPROCS(0)
+
+	uptimeSeconds := time.Since(startTime).Seconds()
+
+	var b strings.Builder
+
+	b.WriteString("# HELP go_goroutines Number of goroutines that currently exist.\n")
+	b.WriteString("# TYPE go_goroutines gauge\n")
+	b.WriteString(fmt.Sprintf("go_goroutines %d\n", runtime.NumGoroutine()))
+
+	b.WriteString("# HELP go_memstats_heap_alloc_bytes Number of heap bytes allocated and still in use.\n")
+	b.WriteString("# TYPE go_memstats_heap_alloc_bytes gauge\n")
+	b.WriteString(fmt.Sprintf("go_memstats_heap_alloc_bytes %d\n", m.HeapAlloc))
+
+	b.WriteString("# HELP go_memstats_heap_inuse_bytes Number of heap bytes in use.\n")
+	b.WriteString("# TYPE go_memstats_heap_inuse_bytes gauge\n")
+	b.WriteString(fmt.Sprintf("go_memstats_heap_inuse_bytes %d\n", m.HeapInuse))
+
+	b.WriteString("# HELP go_memstats_heap_sys_bytes Number of heap bytes obtained from system.\n")
+	b.WriteString("# TYPE go_memstats_heap_sys_bytes gauge\n")
+	b.WriteString(fmt.Sprintf("go_memstats_heap_sys_bytes %d\n", m.HeapSys))
+
+	b.WriteString("# HELP go_memstats_stack_inuse_bytes Number of bytes in use by the stack allocator.\n")
+	b.WriteString("# TYPE go_memstats_stack_inuse_bytes gauge\n")
+	b.WriteString(fmt.Sprintf("go_memstats_stack_inuse_bytes %d\n", m.StackInuse))
+
+	b.WriteString("# HELP go_memstats_sys_bytes Number of bytes obtained from system.\n")
+	b.WriteString("# TYPE go_memstats_sys_bytes gauge\n")
+	b.WriteString(fmt.Sprintf("go_memstats_sys_bytes %d\n", m.Sys))
+
+	b.WriteString("# HELP go_gc_cycles_total Total number of completed GC cycles.\n")
+	b.WriteString("# TYPE go_gc_cycles_total counter\n")
+	b.WriteString(fmt.Sprintf("go_gc_cycles_total %d\n", m.NumGC))
+
+	b.WriteString("# HELP go_gc_pause_seconds_sum Cumulative GC pause duration in seconds.\n")
+	b.WriteString("# TYPE go_gc_pause_seconds_sum counter\n")
+	b.WriteString(fmt.Sprintf("go_gc_pause_seconds_sum %f\n", float64(gcPauseSumNs)/1e9))
+
+	b.WriteString("# HELP go_gc_pause_seconds_last Duration of the most recent GC pause in seconds.\n")
+	b.WriteString("# TYPE go_gc_pause_seconds_last gauge\n")
+	b.WriteString(fmt.Sprintf("go_gc_pause_seconds_last %f\n", float64(lastPauseNs)/1e9))
+
+	b.WriteString("# HELP go_threads Number of OS threads created.\n")
+	b.WriteString("# TYPE go_threads gauge\n")
+	b.WriteString(fmt.Sprintf("go_threads %d\n", numThreads))
+
+	b.WriteString("# HELP process_uptime_seconds Time since process start in seconds.\n")
+	b.WriteString("# TYPE process_uptime_seconds gauge\n")
+	b.WriteString(fmt.Sprintf("process_uptime_seconds %f\n", uptimeSeconds))
+
+	return b.String()
 }
 
 func ExposePrometheus() string {
@@ -102,6 +199,17 @@ type marketIngestKey struct {
 	result string
 }
 
+type marketKey struct {
+	venue  string
+	symbol string
+}
+
+type marketPriceKey struct {
+	venue  string
+	symbol string
+	side   string
+}
+
 type executionGatewayKey struct {
 	operation string
 	result    string
@@ -136,6 +244,12 @@ type Registry struct {
 	momentumLatency map[momentumLatencyKey]*histogram
 	momentumSignals map[momentumSignalKey]uint64
 	marketIngest    map[marketIngestKey]uint64
+
+	marketLatency      map[marketKey]*histogram
+	marketPrice        map[marketPriceKey]float64
+	marketWSConnected  map[string]float64
+	marketWSReconnects map[string]uint64
+	marketTickCount    map[marketKey]uint64
 }
 
 func NewRegistry() *Registry {
@@ -161,6 +275,12 @@ func NewRegistry() *Registry {
 		momentumLatency: make(map[momentumLatencyKey]*histogram),
 		momentumSignals: make(map[momentumSignalKey]uint64),
 		marketIngest:    make(map[marketIngestKey]uint64),
+
+		marketLatency:      make(map[marketKey]*histogram),
+		marketPrice:        make(map[marketPriceKey]float64),
+		marketWSConnected:  make(map[string]float64),
+		marketWSReconnects: make(map[string]uint64),
+		marketTickCount:    make(map[marketKey]uint64),
 	}
 }
 
@@ -356,6 +476,96 @@ func (r *Registry) ObserveMarketIngest(venue, result string) {
 	defer r.mu.Unlock()
 
 	r.marketIngest[marketIngestKey{venue: venue, result: result}]++
+}
+
+func (r *Registry) ObserveMarketLatency(venue, symbol string, latencyMS float64) {
+	venue = strings.ToLower(strings.TrimSpace(venue))
+	if venue == "" {
+		venue = "unknown"
+	}
+	symbol = strings.ToUpper(strings.TrimSpace(symbol))
+	if symbol == "" {
+		symbol = "UNKNOWN"
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	key := marketKey{venue: venue, symbol: symbol}
+	h, ok := r.marketLatency[key]
+	if !ok {
+		h = &histogram{
+			buckets: []float64{1, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 5000},
+			counts:  make([]uint64, 12),
+		}
+		r.marketLatency[key] = h
+	}
+	observeHistogram(h, latencyMS)
+}
+
+func (r *Registry) SetMarketPrice(venue, symbol, side string, price float64) {
+	venue = strings.ToLower(strings.TrimSpace(venue))
+	if venue == "" {
+		venue = "unknown"
+	}
+	symbol = strings.ToUpper(strings.TrimSpace(symbol))
+	if symbol == "" {
+		symbol = "UNKNOWN"
+	}
+	side = strings.ToLower(strings.TrimSpace(side))
+	if side == "" {
+		side = "unknown"
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.marketPrice[marketPriceKey{venue: venue, symbol: symbol, side: side}] = price
+}
+
+func (r *Registry) SetMarketWSConnected(venue string, connected bool) {
+	venue = strings.ToLower(strings.TrimSpace(venue))
+	if venue == "" {
+		venue = "unknown"
+	}
+
+	val := 0.0
+	if connected {
+		val = 1.0
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.marketWSConnected[venue] = val
+}
+
+func (r *Registry) ObserveMarketWSReconnect(venue string) {
+	venue = strings.ToLower(strings.TrimSpace(venue))
+	if venue == "" {
+		venue = "unknown"
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.marketWSReconnects[venue]++
+}
+
+func (r *Registry) ObserveMarketTickRate(venue, symbol string) {
+	venue = strings.ToLower(strings.TrimSpace(venue))
+	if venue == "" {
+		venue = "unknown"
+	}
+	symbol = strings.ToUpper(strings.TrimSpace(symbol))
+	if symbol == "" {
+		symbol = "UNKNOWN"
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.marketTickCount[marketKey{venue: venue, symbol: symbol}]++
 }
 
 func (r *Registry) ExposePrometheus() string {
@@ -638,6 +848,114 @@ func (r *Registry) ExposePrometheus() string {
 			r.marketIngest[key],
 		))
 	}
+
+	// --- Market latency histogram ---
+	b.WriteString("# HELP engine_market_latency_ms End-to-end market data latency in milliseconds.\n")
+	b.WriteString("# TYPE engine_market_latency_ms histogram\n")
+	mLatKeys := make([]marketKey, 0, len(r.marketLatency))
+	for k := range r.marketLatency {
+		mLatKeys = append(mLatKeys, k)
+	}
+	sort.Slice(mLatKeys, func(i, j int) bool {
+		a, c := mLatKeys[i], mLatKeys[j]
+		if a.venue != c.venue {
+			return a.venue < c.venue
+		}
+		return a.symbol < c.symbol
+	})
+	for _, key := range mLatKeys {
+		writeHistogram(
+			&b,
+			"engine_market_latency_ms",
+			map[string]string{"venue": key.venue, "symbol": key.symbol},
+			r.marketLatency[key],
+		)
+	}
+
+	// --- Market price gauge ---
+	b.WriteString("# HELP engine_market_price Latest observed market price.\n")
+	b.WriteString("# TYPE engine_market_price gauge\n")
+	mPriceKeys := make([]marketPriceKey, 0, len(r.marketPrice))
+	for k := range r.marketPrice {
+		mPriceKeys = append(mPriceKeys, k)
+	}
+	sort.Slice(mPriceKeys, func(i, j int) bool {
+		a, c := mPriceKeys[i], mPriceKeys[j]
+		if a.venue != c.venue {
+			return a.venue < c.venue
+		}
+		if a.symbol != c.symbol {
+			return a.symbol < c.symbol
+		}
+		return a.side < c.side
+	})
+	for _, key := range mPriceKeys {
+		b.WriteString(fmt.Sprintf(
+			`engine_market_price{venue="%s",symbol="%s",side="%s"} %f`+"\n",
+			escapeLabel(key.venue),
+			escapeLabel(key.symbol),
+			escapeLabel(key.side),
+			r.marketPrice[key],
+		))
+	}
+
+	// --- Market WS connected gauge ---
+	b.WriteString("# HELP engine_market_ws_connected WebSocket connection status (1=connected, 0=disconnected).\n")
+	b.WriteString("# TYPE engine_market_ws_connected gauge\n")
+	wsConnKeys := make([]string, 0, len(r.marketWSConnected))
+	for k := range r.marketWSConnected {
+		wsConnKeys = append(wsConnKeys, k)
+	}
+	sort.Strings(wsConnKeys)
+	for _, key := range wsConnKeys {
+		b.WriteString(fmt.Sprintf(
+			`engine_market_ws_connected{venue="%s"} %g`+"\n",
+			escapeLabel(key),
+			r.marketWSConnected[key],
+		))
+	}
+
+	// --- Market WS reconnects counter ---
+	b.WriteString("# HELP engine_market_ws_reconnects_total Total WebSocket reconnection attempts.\n")
+	b.WriteString("# TYPE engine_market_ws_reconnects_total counter\n")
+	wsReconnKeys := make([]string, 0, len(r.marketWSReconnects))
+	for k := range r.marketWSReconnects {
+		wsReconnKeys = append(wsReconnKeys, k)
+	}
+	sort.Strings(wsReconnKeys)
+	for _, key := range wsReconnKeys {
+		b.WriteString(fmt.Sprintf(
+			`engine_market_ws_reconnects_total{venue="%s"} %d`+"\n",
+			escapeLabel(key),
+			r.marketWSReconnects[key],
+		))
+	}
+
+	// --- Market tick count counter ---
+	b.WriteString("# HELP engine_market_tick_total Total market data ticks received.\n")
+	b.WriteString("# TYPE engine_market_tick_total counter\n")
+	mTickKeys := make([]marketKey, 0, len(r.marketTickCount))
+	for k := range r.marketTickCount {
+		mTickKeys = append(mTickKeys, k)
+	}
+	sort.Slice(mTickKeys, func(i, j int) bool {
+		a, c := mTickKeys[i], mTickKeys[j]
+		if a.venue != c.venue {
+			return a.venue < c.venue
+		}
+		return a.symbol < c.symbol
+	})
+	for _, key := range mTickKeys {
+		b.WriteString(fmt.Sprintf(
+			`engine_market_tick_total{venue="%s",symbol="%s"} %d`+"\n",
+			escapeLabel(key.venue),
+			escapeLabel(key.symbol),
+			r.marketTickCount[key],
+		))
+	}
+
+	// --- Go runtime metrics ---
+	b.WriteString(ExposeGoRuntime())
 
 	return b.String()
 }
