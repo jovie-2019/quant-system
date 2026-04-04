@@ -125,7 +125,8 @@ services:
     env_file:
       - .env
     environment:
-      BINANCE_WS_ENDPOINT: wss://stream.binance.com:9443/ws
+      BINANCE_WS_ENDPOINT: "wss://stream.binance.com:9443/ws"
+      ALL_PROXY: "socks5://host.docker.internal:7890"
     networks:
       - quant-net
     depends_on:
