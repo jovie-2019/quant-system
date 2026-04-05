@@ -44,6 +44,11 @@ func TestParseOKXTicker(t *testing.T) {
 }
 
 func TestBinanceSpotWSReconnect(t *testing.T) {
+	// Clear proxy env vars so tests connect directly to local test server.
+	for _, k := range []string{"ALL_PROXY", "all_proxy", "HTTPS_PROXY", "HTTP_PROXY"} {
+		t.Setenv(k, "")
+	}
+
 	var connCount atomic.Int64
 
 	upgrader := websocket.Upgrader{}

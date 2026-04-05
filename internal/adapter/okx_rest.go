@@ -49,7 +49,7 @@ func NewOKXSpotTradeGateway(cfg OKXSpotRESTConfig, client *http.Client) (*OKXSpo
 		return nil, ErrOKXConfigInvalid
 	}
 	if client == nil {
-		client = &http.Client{Timeout: 8 * time.Second}
+		client = newHTTPClient(8 * time.Second)
 	}
 	return &OKXSpotTradeGateway{
 		baseURL:          strings.TrimRight(cfg.BaseURL, "/"),

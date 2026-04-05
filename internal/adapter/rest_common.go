@@ -4,11 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/net/proxy"
 )
 
 var (
@@ -74,6 +79,28 @@ func normalizeCanonicalSymbol(symbol string) string {
 	default:
 		return s
 	}
+}
+
+// newHTTPClient creates an http.Client with SOCKS5 proxy support if ALL_PROXY is set.
+func newHTTPClient(timeout time.Duration) *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	for _, env := range []string{"ALL_PROXY", "all_proxy"} {
+		val := os.Getenv(env)
+		if strings.HasPrefix(val, "socks5://") {
+			addr := strings.TrimPrefix(val, "socks5://")
+			dialer, err := proxy.SOCKS5("tcp", addr, nil, proxy.Direct)
+			if err != nil {
+				slog.Warn("rest: socks5 proxy init failed", "addr", addr, "error", err)
+				break
+			}
+			transport.DialContext = func(ctx context.Context, network, a string) (net.Conn, error) {
+				return dialer.Dial(network, a)
+			}
+			slog.Info("rest: using SOCKS5 proxy", "addr", addr)
+			break
+		}
+	}
+	return &http.Client{Timeout: timeout, Transport: transport}
 }
 
 func canonicalToBinanceSymbol(symbol string) string {

@@ -1,4 +1,6 @@
-version: "3.8"
+x-proxy-env: &proxy-env
+  ALL_PROXY: "socks5://host.docker.internal:7890"
+  NO_PROXY: "localhost,127.0.0.1,nats,mysql,engine-core,strategy-runner,admin-api,market-ingest,prometheus,alertmanager,grafana,loki,promtail"
 
 services:
   mysql:
@@ -82,6 +84,8 @@ services:
       - "8080:8080"
     env_file:
       - .env
+    environment:
+      <<: *proxy-env
     networks:
       - quant-net
     depends_on:
@@ -125,8 +129,8 @@ services:
     env_file:
       - .env
     environment:
+      <<: *proxy-env
       BINANCE_WS_ENDPOINT: "wss://stream.binance.com:9443/ws"
-      ALL_PROXY: "socks5://host.docker.internal:7890"
     networks:
       - quant-net
     depends_on:
@@ -148,6 +152,7 @@ services:
     env_file:
       - .env
     environment:
+      <<: *proxy-env
       STATIC_DIR: /app/web/dist
     networks:
       - quant-net
@@ -185,18 +190,6 @@ services:
     depends_on:
       - loki
     restart: unless-stopped
-
-  # cadvisor:
-  #   image: gcr.io/cadvisor/cadvisor:v0.49.1
-  #   ports:
-  #     - "8888:8080"
-  #   volumes:
-  #     - /var/run/docker.sock:/var/run/docker.sock:ro
-  #     - /sys:/sys:ro
-  #     - /var/lib/docker/:/var/lib/docker:ro
-  #   networks:
-  #     - quant-net
-  #   restart: unless-stopped
 
 volumes:
   mysql-data:

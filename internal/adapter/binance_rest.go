@@ -47,7 +47,7 @@ func NewBinanceSpotTradeGateway(cfg BinanceSpotRESTConfig, client *http.Client) 
 		cfg.RecvWindowMS = 5000
 	}
 	if client == nil {
-		client = &http.Client{Timeout: 8 * time.Second}
+		client = newHTTPClient(8 * time.Second)
 	}
 
 	return &BinanceSpotTradeGateway{
