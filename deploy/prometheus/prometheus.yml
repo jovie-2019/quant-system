@@ -22,6 +22,7 @@ scrape_configs:
   - job_name: admin-api
     static_configs:
       - targets: ['admin-api:8090']
-  - job_name: cadvisor
-    static_configs:
-      - targets: ['cadvisor:8080']
+  # cadvisor disabled (image not available in current registry)
+  # - job_name: cadvisor
+  #   static_configs:
+  #     - targets: ['cadvisor:8080']
