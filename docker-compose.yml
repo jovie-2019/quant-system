@@ -1,6 +1,6 @@
 x-proxy-env: &proxy-env
   ALL_PROXY: "socks5://host.docker.internal:7890"
-  NO_PROXY: "localhost,127.0.0.1,nats,mysql,engine-core,strategy-runner,admin-api,market-ingest,prometheus,alertmanager,grafana,loki,promtail"
+  NO_PROXY: "localhost,127.0.0.1,nats,mysql,engine-core,strategy-runner,admin-api,market-ingest,market-ingest-okx,prometheus,alertmanager,grafana,loki,promtail"
 
 services:
   mysql:
@@ -99,25 +99,20 @@ services:
       timeout: 5s
       retries: 5
 
-  strategy-runner:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    entrypoint: ["/app/strategy-runner"]
-    ports:
-      - "8081:8081"
-    env_file:
-      - .env
-    networks:
-      - quant-net
-    depends_on:
-      nats:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8081/api/v1/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+  # Generic strategy-runner disabled. Each strategy runs in its own container.
+  # Example: to run strategy config ID=1:
+  #   strategy-momentum-btc:
+  #     build: .
+  #     entrypoint: ["/app/strategy-runner"]
+  #     environment:
+  #       STRATEGY_CONFIG_ID: "1"
+  #       MYSQL_DSN: ${MYSQL_DSN}
+  #       NATS_URL: ${NATS_URL}
+  #     depends_on:
+  #       mysql: { condition: service_healthy }
+  #       nats: { condition: service_healthy }
+  #     networks:
+  #       - quant-net
 
   market-ingest:
     build:
@@ -131,6 +126,32 @@ services:
     environment:
       <<: *proxy-env
       BINANCE_WS_ENDPOINT: "wss://stream.binance.com:9443/ws"
+    networks:
+      - quant-net
+    depends_on:
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8082/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  market-ingest-okx:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: ["/app/market-ingest"]
+    ports:
+      - "8083:8082"
+    env_file:
+      - .env
+    environment:
+      <<: *proxy-env
+      INGEST_VENUE: "okx"
+      INGEST_SYMBOLS: "BTC-USDT,ETH-USDT,SOL-USDT,BNB-USDT,XRP-USDT,DOGE-USDT,ADA-USDT,AVAX-USDT,LINK-USDT,DOT-USDT"
+      OKX_WS_ENDPOINT: "wss://ws.okx.com:8443/ws/v5/public"
+      INGEST_ADDR: ":8082"
     networks:
       - quant-net
     depends_on:

@@ -65,6 +65,8 @@ export interface Overview {
   total_orders: number
   total_realized_pnl: number
   exchanges: Exchange[]
+  gateway_configured: boolean
+  gateway_venue: string
 }
 
 export interface LoginResponse {

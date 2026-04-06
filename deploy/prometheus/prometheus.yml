@@ -13,12 +13,16 @@ scrape_configs:
   - job_name: engine-core
     static_configs:
       - targets: ['engine-core:8080']
-  - job_name: strategy-runner
-    static_configs:
-      - targets: ['strategy-runner:8081']
+  # strategy-runner disabled (no active strategy containers)
+  # - job_name: strategy-runner
+  #   static_configs:
+  #     - targets: ['strategy-runner:8081']
   - job_name: market-ingest
     static_configs:
       - targets: ['market-ingest:8082']
+  - job_name: market-ingest-okx
+    static_configs:
+      - targets: ['market-ingest-okx:8082']
   - job_name: admin-api
     static_configs:
       - targets: ['admin-api:8090']

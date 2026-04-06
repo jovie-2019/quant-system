@@ -296,6 +296,7 @@ func (p *Pipeline) publishOrderLifecycle(ctx context.Context, intent contracts.O
 // EnsureStreams creates the NATS JetStream streams needed by the pipeline.
 func EnsureStreams(ctx context.Context, client *natsbus.Client) error {
 	streams := []natsbus.StreamConfig{
+		{Name: "STREAM_MARKET", Subjects: []string{"market.normalized.spot.>"}, MaxAge: 24 * time.Hour, MaxBytes: 500 * 1024 * 1024}, // 500MB, 24h
 		{Name: "STREAM_TRADING", Subjects: []string{"strategy.intent.>"}},
 		{Name: "STREAM_RISK", Subjects: []string{"risk.decision.>"}},
 		{Name: "STREAM_ORDERS", Subjects: []string{"order.lifecycle.>"}},

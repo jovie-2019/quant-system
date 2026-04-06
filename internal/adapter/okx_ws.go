@@ -183,6 +183,9 @@ func parseOKXTicker(msg []byte) ([]RawMarketEvent, error) {
 	symbol := canonicalToOKXInstID(envelope.Arg.InstID)
 	for _, data := range envelope.Data {
 		tsMS, _ := strconv.ParseInt(strings.TrimSpace(data.TS), 10, 64)
+		if tsMS == 0 {
+			tsMS = time.Now().UnixMilli()
+		}
 		rawPayload := buildNormalizedPayload(
 			data.BidPx,
 			data.BidSz,

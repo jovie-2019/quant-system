@@ -48,6 +48,8 @@ func main() {
 	if err := client.EnsureStream(context.Background(), natsbus.StreamConfig{
 		Name:     "STREAM_MARKET",
 		Subjects: []string{"market.normalized.spot.>"},
+		MaxAge:   24 * time.Hour,
+		MaxBytes: 500 * 1024 * 1024,
 	}); err != nil {
 		slog.Error("ensure stream failed", "error", err)
 		os.Exit(1)

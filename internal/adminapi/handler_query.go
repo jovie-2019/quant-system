@@ -2,6 +2,7 @@ package adminapi
 
 import (
 	"net/http"
+	"os"
 )
 
 // HandleListPositions handles GET /api/v1/positions.
@@ -44,6 +45,8 @@ type overviewResponse struct {
 	TotalOrders       int              `json:"total_orders"`
 	TotalRealizedPnL  float64          `json:"total_realized_pnl"`
 	Exchanges         []exchangeEntry  `json:"exchanges"`
+	GatewayConfigured bool             `json:"gateway_configured"`
+	GatewayVenue      string           `json:"gateway_venue"`
 }
 
 // exchangeEntry is a single exchange in the overview response.
@@ -89,10 +92,13 @@ func (s *Server) HandleOverview(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	gatewayVenue := os.Getenv("TRADE_VENUE")
 	resp := overviewResponse{
 		RunningStrategies: running,
 		TotalStrategies:   len(strategies),
 		Exchanges:         exEntries,
+		GatewayConfigured: gatewayVenue != "",
+		GatewayVenue:      gatewayVenue,
 	}
 
 	// Fetch positions and orders from MySQL repo if available.

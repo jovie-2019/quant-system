@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Table, Typography, Spin, Empty, message } from 'antd';
+import { Table, Typography, Spin, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { getPositions } from '../api/client';
 import type { Position } from '../api/types';
@@ -106,8 +106,8 @@ const Positions: React.FC = () => {
         columns={columns}
         dataSource={data}
         rowKey={(record) => `${record.account_id}-${record.symbol}`}
-        pagination={{ pageSize: 20, showSizeChanger: true }}
-        locale={{ emptyText: <Empty description="暂无持仓" /> }}
+        pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (total) => `共 ${total} 条` }}
+        locale={{ emptyText: '暂无持仓数据' }}
         size="middle"
       />
     </div>

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Row, Col, Statistic, Table, Spin, message } from 'antd';
+import { Card, Row, Col, Statistic, Table, Alert, Skeleton, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
   RocketOutlined,
@@ -51,16 +51,19 @@ const Dashboard: React.FC = () => {
     },
   ];
 
-  if (loading) {
-    return (
-      <div style={{ textAlign: 'center', paddingTop: 100 }}>
-        <Spin size="large" tip="加载中..." />
-      </div>
-    );
-  }
+  if (loading) return <Skeleton active paragraph={{ rows: 6 }} />;
 
   return (
     <div>
+      {overview && !overview.gateway_configured && (
+        <Alert
+          message="交易网关未配置"
+          description="当前未设置 TRADE_VENUE 环境变量，下单功能不可用。请在 docker-compose.yml 中为 engine-core 配置 TRADE_VENUE、API Key 等参数。"
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+        />
+      )}
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={6}>
           <Card>

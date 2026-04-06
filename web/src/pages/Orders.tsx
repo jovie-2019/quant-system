@@ -151,7 +151,8 @@ const Orders: React.FC = () => {
           columns={columns}
           dataSource={filteredData}
           rowKey="client_order_id"
-          pagination={{ pageSize: 20, showSizeChanger: true }}
+          pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (total) => `共 ${total} 条` }}
+          locale={{ emptyText: '暂无订单记录' }}
           size="middle"
         />
       </Space>

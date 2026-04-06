@@ -12,10 +12,12 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"quant-system/internal/adminstore"
 	"quant-system/internal/crypto"
 	"quant-system/internal/notify"
+	"quant-system/internal/obs/metrics"
 	"quant-system/internal/store/mysqlstore"
 )
 
@@ -138,7 +140,29 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/", s.handleStatic)
 	}
 
-	return mux
+	return s.metricsMiddleware(mux)
+}
+
+// statusRecorder wraps http.ResponseWriter to capture the status code.
+type statusRecorder struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+// WriteHeader captures the status code before delegating to the wrapped writer.
+func (r *statusRecorder) WriteHeader(code int) {
+	r.statusCode = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+// metricsMiddleware records request count and latency for each HTTP request.
+func (s *Server) metricsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rec := &statusRecorder{ResponseWriter: w, statusCode: 200}
+		next.ServeHTTP(rec, r)
+		metrics.ObserveHTTP(r.Method, r.URL.Path, rec.statusCode, time.Since(start))
+	})
 }
 
 // handleHealth handles GET /api/v1/health.

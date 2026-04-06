@@ -169,6 +169,11 @@ func parseBinanceBookTicker(msg []byte) (RawMarketEvent, bool, error) {
 		return RawMarketEvent{}, false, nil
 	}
 
+	sourceTS := payload.EventTime
+	if sourceTS == 0 {
+		sourceTS = time.Now().UnixMilli()
+	}
+
 	symbol := toCanonicalFromCompactSymbol(payload.Symbol)
 	rawPayload := buildNormalizedPayload(
 		payload.BidPX,
@@ -177,7 +182,7 @@ func parseBinanceBookTicker(msg []byte) (RawMarketEvent, bool, error) {
 		payload.AskSZ,
 		payload.BidPX,
 		payload.UpdateID,
-		payload.EventTime,
+		sourceTS,
 	)
 
 	return RawMarketEvent{
@@ -185,7 +190,7 @@ func parseBinanceBookTicker(msg []byte) (RawMarketEvent, bool, error) {
 		Symbol:     symbol,
 		EventType:  payload.EventType,
 		Payload:    rawPayload,
-		SourceTSMS: payload.EventTime,
+		SourceTSMS: sourceTS,
 		Sequence:   payload.UpdateID,
 	}, true, nil
 }
