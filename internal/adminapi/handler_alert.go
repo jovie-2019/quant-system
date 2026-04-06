@@ -43,10 +43,13 @@ func (s *Server) HandleAlertWebhook(w http.ResponseWriter, r *http.Request) {
 
 	var errs []string
 	for _, alert := range payload.Alerts {
-		level := mapSeverity(alert.Labels["severity"])
+		level := mapSeverity(alert.Status, alert.Labels["severity"])
 		title := alert.Labels["alertname"]
 		if title == "" {
 			title = "Unnamed Alert"
+		}
+		if alert.Status == "resolved" {
+			title = "[已恢复] " + title
 		}
 
 		content := buildAlertContent(alert)
@@ -66,8 +69,12 @@ func (s *Server) HandleAlertWebhook(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// mapSeverity maps Alertmanager severity labels to Feishu alert levels.
-func mapSeverity(severity string) string {
+// mapSeverity maps Alertmanager alert status and severity to Feishu alert levels.
+// Resolved alerts always use "info" (green), firing alerts use severity color.
+func mapSeverity(status, severity string) string {
+	if status == "resolved" {
+		return "info"
+	}
 	switch severity {
 	case "critical":
 		return "critical"
