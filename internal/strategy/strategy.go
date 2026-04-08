@@ -22,6 +22,18 @@ type Strategy interface {
 	OnMarket(evt contracts.MarketNormalizedEvent) []OrderIntent
 }
 
+// KlineHandler is an optional interface. Strategies that need K-line data
+// should implement this. The runtime calls OnKline when a candle closes.
+type KlineHandler interface {
+	OnKline(kline contracts.Kline) []OrderIntent
+}
+
+// DepthHandler is an optional interface. Strategies that need order book
+// depth should implement this. The runtime calls OnDepth on each update.
+type DepthHandler interface {
+	OnDepth(depth contracts.DepthSnapshot) []OrderIntent
+}
+
 type IntentSink func(ctx context.Context, intent OrderIntent) error
 
 type BookReader interface {
@@ -31,6 +43,8 @@ type BookReader interface {
 type Runtime interface {
 	Register(s Strategy) error
 	HandleMarket(ctx context.Context, evt contracts.MarketNormalizedEvent) error
+	HandleKline(ctx context.Context, kline contracts.Kline) error
+	HandleDepth(ctx context.Context, depth contracts.DepthSnapshot) error
 	SetBookReader(reader BookReader)
 	GetBookSnapshot(key book.VenueSymbol) (book.BookSnapshot, bool)
 }
@@ -99,6 +113,52 @@ func (r *InMemoryRuntime) HandleMarket(ctx context.Context, evt contracts.Market
 			intent.StrategyID = s.ID()
 			if err := r.intentSink(ctx, intent); err != nil {
 				return err
+			}
+		}
+	}
+	return nil
+}
+
+// HandleKline dispatches a kline event to strategies that implement KlineHandler.
+func (r *InMemoryRuntime) HandleKline(ctx context.Context, kline contracts.Kline) error {
+	r.mu.RLock()
+	strategies := make([]Strategy, 0, len(r.strategies))
+	for _, s := range r.strategies {
+		strategies = append(strategies, s)
+	}
+	r.mu.RUnlock()
+
+	for _, s := range strategies {
+		if kh, ok := s.(KlineHandler); ok {
+			intents := kh.OnKline(kline)
+			for _, intent := range intents {
+				intent.StrategyID = s.ID()
+				if err := r.intentSink(ctx, intent); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// HandleDepth dispatches a depth event to strategies that implement DepthHandler.
+func (r *InMemoryRuntime) HandleDepth(ctx context.Context, depth contracts.DepthSnapshot) error {
+	r.mu.RLock()
+	strategies := make([]Strategy, 0, len(r.strategies))
+	for _, s := range r.strategies {
+		strategies = append(strategies, s)
+	}
+	r.mu.RUnlock()
+
+	for _, s := range strategies {
+		if dh, ok := s.(DepthHandler); ok {
+			intents := dh.OnDepth(depth)
+			for _, intent := range intents {
+				intent.StrategyID = s.ID()
+				if err := r.intentSink(ctx, intent); err != nil {
+					return err
+				}
 			}
 		}
 	}
