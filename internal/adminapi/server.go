@@ -277,6 +277,9 @@ func (s *Server) routeStrategyByID(w http.ResponseWriter, r *http.Request) {
 		case "stop":
 			s.HandleStopStrategy(w, r)
 			return
+		case "logs":
+			s.HandleStrategyLogs(w, r)
+			return
 		}
 	}
 

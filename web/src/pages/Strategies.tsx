@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Table,
   Button,
@@ -13,11 +13,14 @@ import {
   Spin,
   Drawer,
   Card,
+  Switch,
+  Empty,
+  Tooltip,
 } from 'antd';
-import { PlusOutlined, ExclamationCircleOutlined, BookOutlined } from '@ant-design/icons';
+import { PlusOutlined, ExclamationCircleOutlined, BookOutlined, ReloadOutlined, FileTextOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import api from '../api/client';
-import type { Exchange, APIKey, StrategyConfig, StrategyMeta } from '../api/types';
+import type { Exchange, APIKey, StrategyConfig, StrategyMeta, LogLine } from '../api/types';
 
 const Strategies: React.FC = () => {
   const [data, setData] = useState<StrategyConfig[]>([]);
@@ -36,6 +39,14 @@ const Strategies: React.FC = () => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [strategyTypes, setStrategyTypes] = useState<StrategyMeta[]>([]);
   const [typesLoading, setTypesLoading] = useState(false);
+  const [logDrawerVisible, setLogDrawerVisible] = useState(false);
+  const [logStrategy, setLogStrategy] = useState<StrategyConfig | null>(null);
+  const [logs, setLogs] = useState<LogLine[]>([]);
+  const [logCount, setLogCount] = useState(0);
+  const [logSince, setLogSince] = useState('1h');
+  const [logLoading, setLogLoading] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [expandedFields, setExpandedFields] = useState<Record<number, boolean>>({});
   const [form] = Form.useForm();
 
   const selectedExchangeId = Form.useWatch('exchange_id', form);
@@ -228,6 +239,78 @@ const Strategies: React.FC = () => {
     return ex ? ex.name : String(exchangeId);
   };
 
+  const fetchLogs = useCallback(async () => {
+    if (!logStrategy) return;
+    setLogLoading(true);
+    try {
+      const result = await api.getStrategyLogs(logStrategy.id, undefined, logSince);
+      setLogs(result.lines || []);
+      setLogCount(result.count);
+    } catch {
+      message.error('获取日志失败');
+    } finally {
+      setLogLoading(false);
+    }
+  }, [logStrategy, logSince]);
+
+  useEffect(() => {
+    if (logDrawerVisible && logStrategy) {
+      fetchLogs();
+    }
+  }, [logDrawerVisible, logStrategy, logSince, fetchLogs]);
+
+  useEffect(() => {
+    if (!autoRefresh || !logDrawerVisible || !logStrategy) return;
+    const timer = setInterval(fetchLogs, 5000);
+    return () => clearInterval(timer);
+  }, [autoRefresh, logDrawerVisible, logStrategy, logSince, fetchLogs]);
+
+  const openLogDrawer = (record: StrategyConfig) => {
+    setLogStrategy(record);
+    setLogs([]);
+    setLogCount(0);
+    setExpandedFields({});
+    setLogDrawerVisible(true);
+  };
+
+  const closeLogDrawer = () => {
+    setLogDrawerVisible(false);
+    setAutoRefresh(false);
+    setLogStrategy(null);
+  };
+
+  const formatLogTime = (ts: string) => {
+    try {
+      const d = new Date(ts);
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      const ss = String(d.getSeconds()).padStart(2, '0');
+      const ms = String(d.getMilliseconds()).padStart(3, '0');
+      return `${hh}:${mm}:${ss}.${ms}`;
+    } catch {
+      return ts;
+    }
+  };
+
+  const getLevelColor = (level: string): string | undefined => {
+    const upper = level.toUpperCase();
+    if (upper === 'INFO') return 'blue';
+    if (upper === 'WARN' || upper === 'WARNING') return 'orange';
+    if (upper === 'ERROR') return 'red';
+    return undefined;
+  };
+
+  const toggleFields = (index: number) => {
+    setExpandedFields((prev) => ({ ...prev, [index]: !prev[index] }));
+  };
+
+  const logStyles = {
+    container: { fontFamily: 'monospace', fontSize: 12, lineHeight: '20px' } as React.CSSProperties,
+    line: { padding: '4px 8px', borderBottom: '1px solid #f0f0f0', display: 'flex', gap: 8, alignItems: 'flex-start' } as React.CSSProperties,
+    time: { color: '#888', whiteSpace: 'nowrap' as const, minWidth: 100 },
+    msg: { flex: 1, wordBreak: 'break-all' as const },
+  };
+
   const columns: ColumnsType<StrategyConfig> = [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
     { title: '策略ID', dataIndex: 'strategy_id', key: 'strategy_id' },
@@ -257,7 +340,7 @@ const Strategies: React.FC = () => {
     {
       title: '操作',
       key: 'action',
-      width: 280,
+      width: 340,
       render: (_, record) => {
         const isRunning = record.status === 'running';
         const isLoading = actionLoading[record.id] ?? false;
@@ -296,6 +379,14 @@ const Strategies: React.FC = () => {
               disabled={isRunning}
             >
               编辑
+            </Button>
+            <Button
+              type="link"
+              size="small"
+              icon={<FileTextOutlined />}
+              onClick={() => openLogDrawer(record)}
+            >
+              日志
             </Button>
             <Popconfirm
               title="确认删除该策略？"
@@ -485,6 +576,79 @@ const Strategies: React.FC = () => {
               </Card>
             );
           })}
+        </Spin>
+      </Drawer>
+
+      <Drawer
+        title={`策略日志 - ${logStrategy?.strategy_id ?? ''}`}
+        placement="right"
+        width={720}
+        open={logDrawerVisible}
+        onClose={closeLogDrawer}
+      >
+        <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          <Space>
+            <Select
+              value={logSince}
+              onChange={setLogSince}
+              style={{ width: 140 }}
+              options={[
+                { label: '最近5分钟', value: '5m' },
+                { label: '最近15分钟', value: '15m' },
+                { label: '最近1小时', value: '1h' },
+                { label: '最近6小时', value: '6h' },
+              ]}
+            />
+            <Switch
+              checked={autoRefresh}
+              onChange={setAutoRefresh}
+              checkedChildren="自动刷新"
+              unCheckedChildren="自动刷新"
+            />
+            <Tooltip title="刷新">
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={fetchLogs}
+                loading={logLoading}
+              />
+            </Tooltip>
+          </Space>
+          <span style={{ color: '#888', fontSize: 13 }}>共 {logCount} 条</span>
+        </div>
+
+        <Spin spinning={logLoading}>
+          {logs.length === 0 ? (
+            <Empty description="暂无日志" />
+          ) : (
+            <div style={{ ...logStyles.container, maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' }}>
+              {logs.map((line, idx) => (
+                <div key={idx}>
+                  <div style={logStyles.line}>
+                    <span style={logStyles.time}>{formatLogTime(line.ts)}</span>
+                    <Tag color={getLevelColor(line.level)} style={{ margin: 0 }}>
+                      {line.level.toUpperCase()}
+                    </Tag>
+                    <span style={logStyles.msg}>
+                      {line.msg}
+                      {line.fields && Object.keys(line.fields).length > 0 && (
+                        <a
+                          onClick={() => toggleFields(idx)}
+                          style={{ marginLeft: 8, fontSize: 11 }}
+                        >
+                          {expandedFields[idx] ? '收起' : '详情'}
+                        </a>
+                      )}
+                    </span>
+                  </div>
+                  {expandedFields[idx] && line.fields && (
+                    <pre style={{ margin: '0 8px 4px 108px', padding: '4px 8px', background: '#f5f5f5', fontSize: 11, borderRadius: 4, overflowX: 'auto' }}>
+                      {JSON.stringify(line.fields, null, 2)}
+                    </pre>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </Spin>
       </Drawer>
     </div>

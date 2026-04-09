@@ -169,3 +169,16 @@ export interface SystemStatus {
   nats_streams: NATSStream[]
   mysql_tables: TableStats[]
 }
+
+export interface LogLine {
+  ts: string
+  level: string
+  msg: string
+  fields?: Record<string, any>
+}
+
+export interface StrategyLogs {
+  strategy_id: string
+  lines: LogLine[]
+  count: number
+}

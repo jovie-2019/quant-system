@@ -16,6 +16,7 @@ import type {
   AccountBalance,
   StrategyMeta,
   SystemStatus,
+  StrategyLogs,
 } from './types'
 
 const client = axios.create({
@@ -209,6 +210,16 @@ export async function sendTestAlert(): Promise<void> {
   })
 }
 
+// ---- Strategy Logs ----
+
+export async function getStrategyLogs(id: number, limit?: number, since?: string): Promise<StrategyLogs> {
+  const params = new URLSearchParams()
+  if (limit) params.set('limit', String(limit))
+  if (since) params.set('since', since)
+  const { data } = await client.get<StrategyLogs>(`/api/v1/strategies/${id}/logs?${params}`)
+  return data
+}
+
 // Namespace export for pages that use `import api from '../api/client'`
 const api = {
   login,
@@ -238,6 +249,7 @@ const api = {
   getStrategyTypes,
   getSystemStatus,
   sendTestAlert,
+  getStrategyLogs,
 }
 
 export default api
