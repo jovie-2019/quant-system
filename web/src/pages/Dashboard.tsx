@@ -55,10 +55,10 @@ const Dashboard: React.FC = () => {
 
   return (
     <div>
-      {overview && !overview.gateway_configured && (
+      {overview && overview.exchanges.length === 0 && (
         <Alert
-          message="交易网关未配置"
-          description="当前未设置 TRADE_VENUE 环境变量，下单功能不可用。请在 docker-compose.yml 中为 engine-core 配置 TRADE_VENUE、API Key 等参数。"
+          message="未配置交易所"
+          description="请先在「交易所管理」中添加交易所，并在「账户管理」中配置 API Key。"
           type="warning"
           showIcon
           style={{ marginBottom: 16 }}

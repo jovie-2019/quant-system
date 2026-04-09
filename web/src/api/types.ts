@@ -128,3 +128,18 @@ export interface AccountBalance {
   balances: AssetBalance[]
   queried_at: string
 }
+
+export interface ConfigField {
+  field: string
+  type: string
+  required: boolean
+  default: string
+  description: string
+}
+
+export interface StrategyMeta {
+  type: string
+  name: string
+  description: string
+  config_fields: ConfigField[]
+}

@@ -2,19 +2,18 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"database/sql"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
-	"quant-system/internal/adapter"
+	"quant-system/internal/adminstore"
 	"quant-system/internal/bus/natsbus"
 	"quant-system/internal/controlapi"
-	"quant-system/internal/execution"
+	"quant-system/internal/crypto"
 	"quant-system/internal/obs/logging"
 	"quant-system/internal/orderfsm"
 	"quant-system/internal/pipeline"
@@ -51,8 +50,10 @@ func main() {
 
 	// --- MySQL (optional) ---
 	var persister pipeline.Persister
+	var db *sql.DB
 	if mysqlDSN != "" {
-		db, err := mysqlstore.Open(mysqlstore.Config{DSN: mysqlDSN})
+		var err error
+		db, err = mysqlstore.Open(mysqlstore.Config{DSN: mysqlDSN})
 		if err != nil {
 			slog.Error("mysql open failed", "error", err)
 			os.Exit(1)
@@ -83,27 +84,41 @@ func main() {
 			"ETH-USDT": {},
 		},
 	})
-
-	// Gateway: select based on TRADE_VENUE.
-	gateway, err := createTradeGateway()
-	if err != nil {
-		slog.Error("trade gateway init failed", "error", err)
-		os.Exit(1)
-	}
-
-	exec, err := execution.NewInMemoryExecutor(gateway)
-	if err != nil {
-		slog.Error("executor init failed", "error", err)
-		os.Exit(1)
-	}
 	fsm := orderfsm.NewInMemoryStateMachine()
 	ledger := position.NewInMemoryLedger()
 
+	// --- Dynamic gateway pool (DB-backed API keys) ---
+	var gatewayPool *pipeline.GatewayPool
+	var adminStore *adminstore.Store
+	aesKey := os.Getenv("AES_KEY")
+	if db != nil && aesKey != "" {
+		encryptor, err := crypto.NewEncryptor(aesKey)
+		if err != nil {
+			slog.Error("aes encryptor init failed", "error", err)
+			os.Exit(1)
+		}
+		adminStore, err = adminstore.NewStore(db)
+		if err != nil {
+			slog.Error("admin store init failed", "error", err)
+			os.Exit(1)
+		}
+		if err := adminStore.EnsureSchema(context.Background()); err != nil {
+			slog.Error("admin store schema migration failed", "error", err)
+			os.Exit(1)
+		}
+		gatewayPool = pipeline.NewGatewayPool(adminStore, encryptor, nil)
+		slog.Info("dynamic gateway pool initialized")
+	} else {
+		slog.Warn("AES_KEY or MYSQL_DSN not set, dynamic gateway pool disabled")
+	}
+
 	// --- Pipeline ---
-	pipe, err := pipeline.New(client, riskEngine, exec, fsm, ledger, persister, pipeline.Config{
+	pipe, err := pipeline.New(client, riskEngine, nil, fsm, ledger, persister, pipeline.Config{
 		AccountID:     accountID,
 		DeliverPolicy: deliverPolicy,
 		SimulateFill:  simulateFill,
+		GatewayPool:   gatewayPool,
+		AdminStore:    adminStore,
 	})
 	if err != nil {
 		slog.Error("pipeline init failed", "error", err)
@@ -147,56 +162,6 @@ func main() {
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		slog.Error("engine-core shutdown failed", "error", err)
 		os.Exit(1)
-	}
-}
-
-func createTradeGateway() (adapter.TradeGateway, error) {
-	venue := strings.ToLower(strings.TrimSpace(os.Getenv("TRADE_VENUE")))
-	switch venue {
-	case "binance":
-		apiKey := os.Getenv("BINANCE_API_KEY")
-		apiSecret := os.Getenv("BINANCE_API_SECRET")
-		if apiKey == "" || apiSecret == "" {
-			return nil, fmt.Errorf("BINANCE_API_KEY and BINANCE_API_SECRET are required for venue=binance")
-		}
-		gw, err := adapter.NewBinanceSpotTradeGateway(adapter.BinanceSpotRESTConfig{
-			BaseURL:   getenv("BINANCE_REST_BASE_URL", "https://api.binance.com"),
-			APIKey:    apiKey,
-			APISecret: apiSecret,
-		}, nil)
-		if err != nil {
-			return nil, err
-		}
-		slog.Info("trade gateway initialized", "venue", "binance")
-		return gw, nil
-
-	case "okx":
-		apiKey := os.Getenv("OKX_API_KEY")
-		apiSecret := os.Getenv("OKX_API_SECRET")
-		passphrase := os.Getenv("OKX_PASSPHRASE")
-		if apiKey == "" || apiSecret == "" || passphrase == "" {
-			return nil, fmt.Errorf("OKX_API_KEY, OKX_API_SECRET, and OKX_PASSPHRASE are required for venue=okx")
-		}
-		simulated := getenv("OKX_SIMULATED_TRADING", "false") == "true"
-		gw, err := adapter.NewOKXSpotTradeGateway(adapter.OKXSpotRESTConfig{
-			BaseURL:          getenv("OKX_REST_BASE_URL", "https://www.okx.com"),
-			APIKey:           apiKey,
-			APISecret:        apiSecret,
-			Passphrase:       passphrase,
-			SimulatedTrading: simulated,
-		}, nil)
-		if err != nil {
-			return nil, err
-		}
-		slog.Info("trade gateway initialized", "venue", "okx", "simulated", simulated)
-		return gw, nil
-
-	case "":
-		slog.Warn("TRADE_VENUE not set, using stub gateway (orders will fail)")
-		return adapter.StubTradeGateway{}, nil
-
-	default:
-		return nil, fmt.Errorf("unsupported TRADE_VENUE: %s (supported: binance, okx)", venue)
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"quant-system/internal/adminstore"
+	"quant-system/internal/strategy"
 )
 
 // strategyResponse is the JSON representation of a strategy config.
@@ -305,6 +306,16 @@ func (s *Server) HandleStopStrategy(w http.ResponseWriter, r *http.Request) {
 
 	cfg.Status = "stopped"
 	s.writeJSON(w, http.StatusOK, toStrategyResponse(cfg))
+}
+
+// HandleListStrategyTypes handles GET /api/v1/strategy-types.
+// Returns all registered strategy types with their metadata and config schema.
+func (s *Server) HandleListStrategyTypes(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "GET required")
+		return
+	}
+	s.writeJSON(w, http.StatusOK, strategy.ListMetas())
 }
 
 // HandleStopAll handles POST /api/v1/strategies/stop-all.

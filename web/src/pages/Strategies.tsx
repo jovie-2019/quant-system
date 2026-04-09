@@ -11,11 +11,13 @@ import {
   message,
   Space,
   Spin,
+  Drawer,
+  Card,
 } from 'antd';
-import { PlusOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
+import { PlusOutlined, ExclamationCircleOutlined, BookOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import api from '../api/client';
-import type { Exchange, APIKey, StrategyConfig } from '../api/types';
+import type { Exchange, APIKey, StrategyConfig, StrategyMeta } from '../api/types';
 
 const Strategies: React.FC = () => {
   const [data, setData] = useState<StrategyConfig[]>([]);
@@ -31,6 +33,9 @@ const Strategies: React.FC = () => {
     {},
   );
   const [stopAllLoading, setStopAllLoading] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [strategyTypes, setStrategyTypes] = useState<StrategyMeta[]>([]);
+  const [typesLoading, setTypesLoading] = useState(false);
   const [form] = Form.useForm();
 
   const selectedExchangeId = Form.useWatch('exchange_id', form);
@@ -39,17 +44,56 @@ const Strategies: React.FC = () => {
     (a) => a.exchange_id === selectedExchangeId,
   );
 
+  const generateConfigTemplate = (meta: StrategyMeta): string => {
+    const config: Record<string, any> = {};
+    for (const field of meta.config_fields) {
+      if (field.default) {
+        config[field.field] = field.type === 'number' ? Number(field.default) : field.default;
+      } else {
+        config[field.field] = field.type === 'number' ? 0 : '';
+      }
+    }
+    return JSON.stringify(config, null, 2);
+  };
+
+  const fetchStrategyTypes = async () => {
+    setTypesLoading(true);
+    try {
+      const types = await api.getStrategyTypes();
+      setStrategyTypes(types);
+    } catch {
+      message.error('获取策略类型失败');
+    } finally {
+      setTypesLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (drawerOpen && strategyTypes.length === 0) {
+      fetchStrategyTypes();
+    }
+  }, [drawerOpen]);
+
+  const handleStrategyTypeChange = (value: string) => {
+    const meta = strategyTypes.find((t) => t.type === value);
+    if (meta) {
+      form.setFieldValue('config', generateConfigTemplate(meta));
+    }
+  };
+
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [strategies, exchangeList, accountList] = await Promise.all([
+      const [strategies, exchangeList, accountList, types] = await Promise.all([
         api.getStrategies(),
         api.getExchanges(),
         api.getAccounts(),
+        api.getStrategyTypes(),
       ]);
       setData(strategies);
       setExchanges(exchangeList);
       setAccounts(accountList);
+      setStrategyTypes(types);
     } catch {
       message.error('获取策略列表失败');
     } finally {
@@ -273,9 +317,14 @@ const Strategies: React.FC = () => {
   return (
     <div>
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-          新增策略
-        </Button>
+        <Space>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+            新增策略
+          </Button>
+          <Button icon={<BookOutlined />} onClick={() => setDrawerOpen(true)}>
+            策略类型说明
+          </Button>
+        </Space>
         <Button
           danger
           icon={<ExclamationCircleOutlined />}
@@ -324,8 +373,15 @@ const Strategies: React.FC = () => {
             label="策略类型"
             rules={[{ required: true, message: '请选择策略类型' }]}
           >
-            <Select placeholder="请选择策略类型">
-              <Select.Option value="momentum">Momentum</Select.Option>
+            <Select
+              placeholder="请选择策略类型"
+              onChange={handleStrategyTypeChange}
+            >
+              {strategyTypes.map((st) => (
+                <Select.Option key={st.type} value={st.type}>
+                  {st.name} ({st.type})
+                </Select.Option>
+              ))}
             </Select>
           </Form.Item>
           <Form.Item
@@ -388,6 +444,49 @@ const Strategies: React.FC = () => {
           </Form.Item>
         </Form>
       </Modal>
+
+      <Drawer
+        title="支持的策略类型"
+        placement="right"
+        width={600}
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+      >
+        <Spin spinning={typesLoading}>
+          {strategyTypes.map((meta) => {
+            const configColumns: ColumnsType<any> = [
+              { title: '参数名', dataIndex: 'field', key: 'field' },
+              { title: '类型', dataIndex: 'type', key: 'type' },
+              {
+                title: '必填',
+                dataIndex: 'required',
+                key: 'required',
+                render: (val: boolean) => (
+                  <Tag color={val ? 'red' : 'default'}>{val ? '是' : '否'}</Tag>
+                ),
+              },
+              { title: '默认值', dataIndex: 'default', key: 'default' },
+              { title: '说明', dataIndex: 'description', key: 'description' },
+            ];
+            return (
+              <Card
+                key={meta.type}
+                title={`${meta.name} (${meta.type})`}
+                style={{ marginBottom: 16 }}
+              >
+                <p>{meta.description}</p>
+                <Table
+                  columns={configColumns}
+                  dataSource={meta.config_fields}
+                  rowKey="field"
+                  pagination={false}
+                  size="small"
+                />
+              </Card>
+            );
+          })}
+        </Spin>
+      </Drawer>
     </div>
   );
 };

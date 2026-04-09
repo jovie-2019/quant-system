@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/nats-io/nats.go"
 
+	"quant-system/internal/adminstore"
 	"quant-system/internal/bus/natsbus"
 	"quant-system/internal/execution"
 	"quant-system/internal/orderfsm"
@@ -42,6 +44,8 @@ type Config struct {
 	DeliverPolicy string // "all", "new", "last"
 	SimulateFill  bool   // If true, treat every ack as an immediate full fill (paper trading)
 	Logger        *slog.Logger
+	GatewayPool   *GatewayPool      // dynamic gateway resolution (optional)
+	AdminStore    *adminstore.Store  // for strategy config lookup (optional)
 }
 
 func (c *Config) defaults() {
@@ -64,16 +68,19 @@ func (c *Config) defaults() {
 
 // Pipeline wires NATS intent consumption through the full trading flow.
 type Pipeline struct {
-	bus       *natsbus.Client
-	risk      risk.RiskEngine
-	exec      execution.Executor
-	fsm       orderfsm.OrderStateMachine
-	ledger    position.PositionLedger
-	persister Persister
-	cfg       Config
+	bus         *natsbus.Client
+	risk        risk.RiskEngine
+	exec        execution.Executor
+	fsm         orderfsm.OrderStateMachine
+	ledger      position.PositionLedger
+	persister   Persister
+	gatewayPool *GatewayPool
+	adminStore  *adminstore.Store
+	cfg         Config
 }
 
 // New creates a Pipeline. Persister may be nil (no MySQL).
+// exec may be nil if cfg.GatewayPool is provided (dynamic gateway resolution).
 func New(
 	bus *natsbus.Client,
 	riskEngine risk.RiskEngine,
@@ -89,7 +96,7 @@ func New(
 	if riskEngine == nil {
 		return nil, ErrRiskNil
 	}
-	if exec == nil {
+	if exec == nil && cfg.GatewayPool == nil {
 		return nil, ErrExecNil
 	}
 	if fsm == nil {
@@ -100,13 +107,15 @@ func New(
 	}
 	cfg.defaults()
 	return &Pipeline{
-		bus:       bus,
-		risk:      riskEngine,
-		exec:      exec,
-		fsm:       fsm,
-		ledger:    ledger,
-		persister: persister,
-		cfg:       cfg,
+		bus:         bus,
+		risk:        riskEngine,
+		exec:        exec,
+		fsm:         fsm,
+		ledger:      ledger,
+		persister:   persister,
+		gatewayPool: cfg.GatewayPool,
+		adminStore:  cfg.AdminStore,
+		cfg:         cfg,
 	}, nil
 }
 
@@ -154,8 +163,13 @@ func (p *Pipeline) handleIntent(ctx context.Context, msg natsbus.Message) error 
 		return nil
 	}
 
-	// 2. Execution
-	submit, err := p.exec.Submit(ctx, decision)
+	// 2. Execution — resolve executor dynamically or fall back to default.
+	exec, err := p.resolveExecutor(ctx, intent)
+	if err != nil {
+		p.cfg.Logger.Error("pipeline: resolve executor", "error", err, "intent_id", intent.IntentID)
+		return err
+	}
+	submit, err := exec.Submit(ctx, decision)
 	if err != nil {
 		p.cfg.Logger.Error("pipeline: execution submit", "error", err, "intent_id", intent.IntentID)
 		return err
@@ -177,6 +191,30 @@ func (p *Pipeline) handleIntent(ctx context.Context, msg natsbus.Message) error 
 	}
 
 	return nil
+}
+
+// resolveExecutor picks the right executor for the given intent.
+// If a GatewayPool and AdminStore are configured, it resolves the strategy config
+// from DB to find the api_key_id and returns a cached executor for that key.
+// Otherwise it falls back to the default executor.
+func (p *Pipeline) resolveExecutor(ctx context.Context, intent contracts.OrderIntent) (execution.Executor, error) {
+	if p.gatewayPool != nil && p.adminStore != nil && strings.TrimSpace(intent.StrategyID) != "" {
+		cfg, found, err := p.adminStore.GetStrategyConfigByStrategyID(ctx, intent.StrategyID)
+		if err != nil {
+			p.cfg.Logger.Warn("pipeline: strategy config lookup failed, using default executor",
+				"strategy_id", intent.StrategyID, "error", err)
+		} else if found && cfg.APIKeyID > 0 {
+			exec, err := p.gatewayPool.GetExecutor(ctx, cfg.APIKeyID)
+			if err != nil {
+				return nil, fmt.Errorf("pipeline: get executor for api_key_id %d: %w", cfg.APIKeyID, err)
+			}
+			return exec, nil
+		}
+	}
+	if p.exec != nil {
+		return p.exec, nil
+	}
+	return nil, errors.New("pipeline: no executor available (no gateway pool match and no default executor)")
 }
 
 // ApplyFill processes an external fill event (from exchange execution reports).

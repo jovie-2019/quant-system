@@ -48,3 +48,57 @@ func RegisteredTypes() []string {
 	sort.Strings(names)
 	return names
 }
+
+// ConfigField describes a single configuration field for a strategy type.
+type ConfigField struct {
+	Field       string `json:"field"`
+	Type        string `json:"type"`        // "string","number","boolean"
+	Required    bool   `json:"required"`
+	Default     string `json:"default"`
+	Description string `json:"description"`
+}
+
+// StrategyMeta holds metadata and config schema for a strategy type.
+type StrategyMeta struct {
+	Type         string        `json:"type"`
+	Name         string        `json:"name"`
+	Description  string        `json:"description"`
+	ConfigFields []ConfigField `json:"config_fields"`
+}
+
+var metaRegistry = map[string]StrategyMeta{}
+
+// RegisterMeta registers metadata for a strategy type.
+func RegisterMeta(meta StrategyMeta) {
+	registryMu.Lock()
+	defer registryMu.Unlock()
+
+	metaRegistry[meta.Type] = meta
+}
+
+// ListMetas returns all registered strategy metadata sorted by type name.
+func ListMetas() []StrategyMeta {
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+
+	names := make([]string, 0, len(metaRegistry))
+	for name := range metaRegistry {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	metas := make([]StrategyMeta, len(names))
+	for i, name := range names {
+		metas[i] = metaRegistry[name]
+	}
+	return metas
+}
+
+// GetMeta returns the metadata for a strategy type.
+func GetMeta(typeName string) (StrategyMeta, bool) {
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+
+	meta, ok := metaRegistry[typeName]
+	return meta, ok
+}

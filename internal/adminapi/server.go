@@ -115,6 +115,9 @@ func (s *Server) Handler() http.Handler {
 	auth.HandleFunc("/api/v1/accounts", s.routeAccounts)
 	auth.HandleFunc("/api/v1/accounts/", s.routeAccountByID)
 
+	// Strategy types (metadata catalog).
+	auth.HandleFunc("/api/v1/strategy-types", s.HandleListStrategyTypes)
+
 	// Strategies.
 	auth.HandleFunc("/api/v1/strategies/stop-all", s.HandleStopAll)
 	auth.HandleFunc("/api/v1/strategies", s.routeStrategies)

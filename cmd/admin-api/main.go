@@ -12,6 +12,10 @@ import (
 
 	"quant-system/internal/adminapi"
 	"quant-system/internal/adminstore"
+
+	// Blank-import strategy packages to trigger RegisterMeta in init().
+	_ "quant-system/internal/strategy/momentum"
+	_ "quant-system/internal/strategy/template"
 	"quant-system/internal/crypto"
 	"quant-system/internal/obs/logging"
 	"quant-system/internal/store/mysqlstore"
