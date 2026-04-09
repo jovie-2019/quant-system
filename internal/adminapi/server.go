@@ -133,6 +133,9 @@ func (s *Server) Handler() http.Handler {
 	// Overview.
 	auth.HandleFunc("/api/v1/overview", s.HandleOverview)
 
+	// System status.
+	auth.HandleFunc("/api/v1/system/status", s.HandleSystemStatus)
+
 	mux.Handle("/api/v1/", s.JWTMiddleware(auth))
 
 	// Alert webhook (no auth — called by Alertmanager directly).

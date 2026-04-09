@@ -143,3 +143,29 @@ export interface StrategyMeta {
   description: string
   config_fields: ConfigField[]
 }
+
+// System status types
+
+export interface ServiceStatus {
+  status: string
+  info: string
+}
+
+export interface NATSStream {
+  name: string
+  messages: number
+  bytes: number
+  consumers: number
+}
+
+export interface TableStats {
+  name: string
+  rows: number
+  error?: string
+}
+
+export interface SystemStatus {
+  services: Record<string, ServiceStatus>
+  nats_streams: NATSStream[]
+  mysql_tables: TableStats[]
+}

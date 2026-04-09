@@ -15,6 +15,7 @@ import type {
   UpdateStrategyRequest,
   AccountBalance,
   StrategyMeta,
+  SystemStatus,
 } from './types'
 
 const client = axios.create({
@@ -184,6 +185,30 @@ export async function getOverview(): Promise<Overview> {
   return data
 }
 
+// ---- System Status ----
+
+export async function getSystemStatus(): Promise<SystemStatus> {
+  const { data } = await client.get<SystemStatus>('/api/v1/system/status')
+  return data
+}
+
+export async function sendTestAlert(): Promise<void> {
+  await client.post('/api/v1/alerts/webhook', {
+    status: 'firing',
+    alerts: [
+      {
+        status: 'resolved',
+        labels: { alertname: 'TestAlert', severity: 'info' },
+        annotations: {
+          summary: '飞书告警测试',
+          description: '这是一条测试消息，来自 quant-system 系统设置页面',
+        },
+        startsAt: new Date().toISOString(),
+      },
+    ],
+  })
+}
+
 // Namespace export for pages that use `import api from '../api/client'`
 const api = {
   login,
@@ -211,6 +236,8 @@ const api = {
   getOverview,
   getAccountBalance,
   getStrategyTypes,
+  getSystemStatus,
+  sendTestAlert,
 }
 
 export default api

@@ -63,6 +63,11 @@ func NewStore(db *sql.DB) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
+// DB returns the underlying database handle.
+func (s *Store) DB() *sql.DB {
+	return s.db
+}
+
 // EnsureSchema creates all admin tables if they do not exist.
 func (s *Store) EnsureSchema(ctx context.Context) error {
 	for _, stmt := range adminDDL {
