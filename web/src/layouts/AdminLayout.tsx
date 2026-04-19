@@ -15,6 +15,7 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   ExperimentOutlined,
+  RadarChartOutlined,
 } from '@ant-design/icons'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -26,6 +27,7 @@ const menuItems = [
   { key: '/accounts', icon: <KeyOutlined />, label: 'API 密钥' },
   { key: '/strategies', icon: <RocketOutlined />, label: '策略管理' },
   { key: '/backtests', icon: <ExperimentOutlined />, label: '回测工作台' },
+  { key: '/regime', icon: <RadarChartOutlined />, label: '市场状态' },
   { key: '/positions', icon: <FundOutlined />, label: '持仓' },
   { key: '/orders', icon: <OrderedListOutlined />, label: '订单' },
   { key: '/risk-config', icon: <SafetyOutlined />, label: '风控配置' },

@@ -12,6 +12,7 @@ import RiskConfig from './pages/RiskConfig'
 import Assets from './pages/Assets'
 import Settings from './pages/Settings'
 import BacktestWorkbench from './pages/BacktestWorkbench'
+import RegimeDashboard from './pages/RegimeDashboard'
 import ProtectedRoute from './components/ProtectedRoute'
 
 export default function App() {
@@ -26,6 +27,7 @@ export default function App() {
             <Route path="/accounts" element={<Accounts />} />
             <Route path="/strategies" element={<Strategies />} />
             <Route path="/backtests" element={<BacktestWorkbench />} />
+            <Route path="/regime" element={<RegimeDashboard />} />
             <Route path="/positions" element={<Positions />} />
             <Route path="/orders" element={<Orders />} />
             <Route path="/risk-config" element={<RiskConfig />} />
