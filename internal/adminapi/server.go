@@ -34,6 +34,11 @@ type Server struct {
 
 	riskMu  sync.RWMutex
 	riskCfg RiskConfigPayload
+
+	// backtests holds the in-memory registry of recent backtest runs. It is
+	// bounded (default 100) with oldest-first eviction. When ClickHouse lands
+	// this can be backed by a durable store without changing the handlers.
+	backtests *BacktestStore
 }
 
 // Config holds admin API configuration.
@@ -92,6 +97,7 @@ func NewServer(cfg Config) (*Server, error) {
 		logger:    logger,
 		staticDir: cfg.StaticDir,
 		feishu:    feishuClient,
+		backtests: NewBacktestStore(100),
 	}, nil
 }
 
@@ -135,6 +141,10 @@ func (s *Server) Handler() http.Handler {
 
 	// System status.
 	auth.HandleFunc("/api/v1/system/status", s.HandleSystemStatus)
+
+	// Backtests.
+	auth.HandleFunc("/api/v1/backtests", s.routeBacktests)
+	auth.HandleFunc("/api/v1/backtests/", s.HandleGetBacktest)
 
 	mux.Handle("/api/v1/", s.JWTMiddleware(auth))
 
@@ -292,6 +302,18 @@ func (s *Server) routeStrategyByID(w http.ResponseWriter, r *http.Request) {
 		s.HandleDeleteStrategy(w, r)
 	default:
 		s.writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "GET, PUT or DELETE required")
+	}
+}
+
+// routeBacktests dispatches GET/POST for /api/v1/backtests.
+func (s *Server) routeBacktests(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		s.HandleListBacktests(w, r)
+	case http.MethodPost:
+		s.HandleCreateBacktest(w, r)
+	default:
+		s.writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "GET or POST required")
 	}
 }
 
