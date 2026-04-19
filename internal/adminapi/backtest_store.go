@@ -28,20 +28,43 @@ const (
 )
 
 // BacktestDatasetSpec describes the market data source for a backtest run.
-// Only Source="synthetic" is supported in the MVP; once the ClickHouse
-// market store lands, "clickhouse" will be added for real historical data.
+// Supported Source values:
+//   - "synthetic": use the fields below to generate a random walk.
+//   - "clickhouse": use VenueName + IntervalName + [StartTSMS, EndTSMS]
+//     to query the configured KlineStore; NumEvents acts as an optional cap.
 type BacktestDatasetSpec struct {
-	Source          string  `json:"source"`
-	Symbol          string  `json:"symbol"`
-	NumEvents       int     `json:"num_events"`
-	Seed            int64   `json:"seed"`
-	StartPrice      float64 `json:"start_price"`
-	VolatilityBps   float64 `json:"volatility_bps"`
-	TrendBpsPerStep float64 `json:"trend_bps_per_step"`
-	SpreadBps       float64 `json:"spread_bps"`
-	StepMS          int64   `json:"step_ms"`
-	StartTSMS       int64   `json:"start_ts_ms"`
+	Source    string `json:"source"`
+	Symbol    string `json:"symbol"`
+	NumEvents int    `json:"num_events"`
+
+	// Synthetic-only knobs.
+	Seed            int64   `json:"seed,omitempty"`
+	StartPrice      float64 `json:"start_price,omitempty"`
+	VolatilityBps   float64 `json:"volatility_bps,omitempty"`
+	TrendBpsPerStep float64 `json:"trend_bps_per_step,omitempty"`
+	SpreadBps       float64 `json:"spread_bps,omitempty"`
+	StepMS          int64   `json:"step_ms,omitempty"`
+
+	// Shared: for synthetic this is the first event timestamp; for
+	// clickhouse it is the inclusive lower bound of the query window.
+	StartTSMS int64 `json:"start_ts_ms,omitempty"`
+	// EndTSMSField is the inclusive upper bound of the query window for
+	// ClickHouse-sourced datasets. Ignored for synthetic.
+	EndTSMSField int64 `json:"end_ts_ms,omitempty"`
+
+	// Venue / interval selectors for ClickHouse lookups. Ignored for synthetic.
+	VenueName    string `json:"venue,omitempty"`
+	IntervalName string `json:"interval,omitempty"`
 }
+
+// Interval returns the normalised interval string (e.g. "1m").
+func (s BacktestDatasetSpec) Interval() string { return s.IntervalName }
+
+// Venue returns the venue name used to scope ClickHouse queries.
+func (s BacktestDatasetSpec) Venue() string { return s.VenueName }
+
+// EndTSMS returns the inclusive upper bound of the query window.
+func (s BacktestDatasetSpec) EndTSMS() int64 { return s.EndTSMSField }
 
 // BacktestRiskSpec mirrors the risk.Config subset exposed to the UI.
 type BacktestRiskSpec struct {

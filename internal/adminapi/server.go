@@ -16,6 +16,7 @@ import (
 
 	"quant-system/internal/adminstore"
 	"quant-system/internal/crypto"
+	"quant-system/internal/marketstore"
 	"quant-system/internal/notify"
 	"quant-system/internal/obs/metrics"
 	"quant-system/internal/store/mysqlstore"
@@ -39,6 +40,11 @@ type Server struct {
 	// bounded (default 100) with oldest-first eviction. When ClickHouse lands
 	// this can be backed by a durable store without changing the handlers.
 	backtests *BacktestStore
+
+	// klines is the optional ClickHouse-backed historical kline source used
+	// when a BacktestRequest selects dataset.source="clickhouse". Nil means
+	// only the synthetic source is available.
+	klines marketstore.KlineStore
 }
 
 // Config holds admin API configuration.
@@ -51,6 +57,11 @@ type Config struct {
 	Logger           *slog.Logger
 	StaticDir        string // directory for static files (empty = disabled)
 	FeishuWebhookURL string // Feishu webhook URL for alert forwarding (empty = disabled)
+
+	// KlineStore is an optional historical kline source used by backtests
+	// with dataset.source="clickhouse". Leaving it nil restricts the
+	// backtest API to the synthetic source.
+	KlineStore marketstore.KlineStore
 }
 
 var (
@@ -98,6 +109,7 @@ func NewServer(cfg Config) (*Server, error) {
 		staticDir: cfg.StaticDir,
 		feishu:    feishuClient,
 		backtests: NewBacktestStore(100),
+		klines:    cfg.KlineStore,
 	}, nil
 }
 

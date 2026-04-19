@@ -12,13 +12,14 @@ import (
 
 	"quant-system/internal/adminapi"
 	"quant-system/internal/adminstore"
+	"quant-system/internal/crypto"
+	"quant-system/internal/marketstore"
+	"quant-system/internal/obs/logging"
+	"quant-system/internal/store/mysqlstore"
 
 	// Blank-import strategy packages to trigger RegisterMeta in init().
 	_ "quant-system/internal/strategy/momentum"
 	_ "quant-system/internal/strategy/template"
-	"quant-system/internal/crypto"
-	"quant-system/internal/obs/logging"
-	"quant-system/internal/store/mysqlstore"
 )
 
 func main() {
@@ -81,6 +82,27 @@ func main() {
 
 	staticDir := getenv("STATIC_DIR", "./web/dist")
 
+	// --- Optional ClickHouse kline store (enables dataset.source="clickhouse") ---
+	var klineStore marketstore.KlineStore
+	if chAddr := os.Getenv("CLICKHOUSE_ADDR"); chAddr != "" {
+		chCtx, chCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ch, err := marketstore.NewClickHouseStore(chCtx, marketstore.ClickHouseConfig{
+			Addrs:    []string{chAddr},
+			Database: getenv("CLICKHOUSE_DB", "quant"),
+			Username: getenv("CLICKHOUSE_USER", "quant"),
+			Password: os.Getenv("CLICKHOUSE_PASSWORD"),
+		})
+		chCancel()
+		if err != nil {
+			slog.Warn("clickhouse connect failed; backtest.source=clickhouse will be unavailable",
+				"addr", chAddr, "error", err)
+		} else {
+			klineStore = ch
+			defer ch.Close()
+			slog.Info("clickhouse kline store enabled", "addr", chAddr)
+		}
+	}
+
 	apiServer, err := adminapi.NewServer(adminapi.Config{
 		Store:            store,
 		Repo:             repo,
@@ -89,6 +111,7 @@ func main() {
 		PassHash:         passHash,
 		StaticDir:        staticDir,
 		FeishuWebhookURL: os.Getenv("FEISHU_WEBHOOK_URL"),
+		KlineStore:       klineStore,
 	})
 	if err != nil {
 		slog.Error("admin api server init failed", "error", err)

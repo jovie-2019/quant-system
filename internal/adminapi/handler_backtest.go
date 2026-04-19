@@ -10,6 +10,7 @@ import (
 	"time"
 
 	v2 "quant-system/internal/backtest/v2"
+	"quant-system/internal/marketstore"
 	"quant-system/internal/risk"
 	"quant-system/internal/strategy"
 	"quant-system/pkg/contracts"
@@ -130,7 +131,11 @@ func (s *Server) runBacktest(ctx context.Context, id string, req BacktestRequest
 		return
 	}
 
-	ds := buildDataset(req.Dataset)
+	ds, err := s.buildDataset(ctx, req.Dataset)
+	if err != nil {
+		fail(fmt.Sprintf("dataset: %v", err))
+		return
+	}
 	if len(ds.Events) == 0 {
 		fail("dataset produced 0 events")
 		return
@@ -160,8 +165,13 @@ func (s *Server) runBacktest(ctx context.Context, id string, req BacktestRequest
 	})
 }
 
-// buildDataset dispatches on Source. Only "synthetic" is supported today.
-func buildDataset(spec BacktestDatasetSpec) v2.Dataset {
+// buildDataset dispatches on Source. Supported:
+//   - "synthetic" (default): seeded random-walk generator
+//   - "clickhouse":            historical klines from the configured store
+//
+// The ClickHouse branch converts Kline rows into MarketNormalizedEvents so
+// the same backtest.v2 engine can consume them without special-casing.
+func (s *Server) buildDataset(ctx context.Context, spec BacktestDatasetSpec) (v2.Dataset, error) {
 	source := strings.ToLower(strings.TrimSpace(spec.Source))
 	if source == "" {
 		source = "synthetic"
@@ -178,10 +188,61 @@ func buildDataset(spec BacktestDatasetSpec) v2.Dataset {
 			SpreadBps:       spec.SpreadBps,
 			StepMS:          spec.StepMS,
 			StartTSMS:       spec.StartTSMS,
+		}), nil
+	case "clickhouse":
+		if s.klines == nil {
+			return v2.Dataset{}, fmt.Errorf("clickhouse source not configured; start admin-api with CLICKHOUSE_ADDR set")
+		}
+		interval := spec.Interval()
+		if interval == "" {
+			return v2.Dataset{}, fmt.Errorf("dataset.interval is required for source=clickhouse")
+		}
+		klines, err := s.klines.Query(ctx, marketstore.KlineQuery{
+			Venue:    spec.Venue(),
+			Symbol:   spec.Symbol,
+			Interval: interval,
+			StartMS:  spec.StartTSMS,
+			EndMS:    spec.EndTSMS(),
+			Limit:    spec.NumEvents,
 		})
+		if err != nil {
+			return v2.Dataset{}, fmt.Errorf("clickhouse query: %w", err)
+		}
+		if len(klines) == 0 {
+			return v2.Dataset{}, fmt.Errorf("clickhouse returned 0 klines for %s %s in [%d,%d]",
+				spec.Symbol, interval, spec.StartTSMS, spec.EndTSMS())
+		}
+		return v2.Dataset{
+			Name:   fmt.Sprintf("clickhouse:%s:%s", spec.Symbol, interval),
+			Events: klinesToMarketEvents(klines),
+		}, nil
 	default:
-		return v2.Dataset{}
+		return v2.Dataset{}, fmt.Errorf("unknown dataset source %q", spec.Source)
 	}
+}
+
+// klinesToMarketEvents converts persisted Kline rows into the event shape
+// expected by backtest.v2. LastPX uses Close; Bid/Ask are synthesised with
+// a 0.5 bps half-spread so SimMatcher has a workable book.
+func klinesToMarketEvents(klines []contracts.Kline) []contracts.MarketNormalizedEvent {
+	out := make([]contracts.MarketNormalizedEvent, 0, len(klines))
+	for i, k := range klines {
+		half := k.Close * 0.00005
+		out = append(out, contracts.MarketNormalizedEvent{
+			Venue:      k.Venue,
+			Symbol:     k.Symbol,
+			Sequence:   int64(i),
+			BidPX:      k.Close - half,
+			BidSZ:      1,
+			AskPX:      k.Close + half,
+			AskSZ:      1,
+			LastPX:     k.Close,
+			SourceTSMS: k.CloseTime,
+			IngestTSMS: k.CloseTime,
+			EmitTSMS:   k.CloseTime,
+		})
+	}
+	return out
 }
 
 func toRiskConfig(spec BacktestRiskSpec) risk.Config {

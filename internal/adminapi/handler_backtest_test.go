@@ -10,7 +10,9 @@ import (
 	"strings"
 	"testing"
 
+	"quant-system/internal/marketstore"
 	_ "quant-system/internal/strategy/momentum" // registers "momentum" strategy type
+	"quant-system/pkg/contracts"
 )
 
 // newBacktestServer returns a minimally-wired Server capable of serving the
@@ -206,6 +208,85 @@ func TestHandleListBacktests_ReturnsRecentFirst(t *testing.T) {
 	}
 	if resp.Items[1].ID != firstID {
 		t.Fatalf("second=%s want %s", resp.Items[1].ID, firstID)
+	}
+}
+
+func TestHandleCreateBacktest_ClickHouseSource(t *testing.T) {
+	// Seed a memory KlineStore with a deterministic upward ramp and wire it
+	// into the server as if it were a ClickHouse instance.
+	srv := newBacktestServer(t)
+	store := marketstore.NewMemoryStore()
+	ctx := context.Background()
+	klines := make([]contracts.Kline, 0, 50)
+	baseTS := int64(1_700_000_000_000)
+	for i := 0; i < 50; i++ {
+		px := 100 + float64(i)
+		klines = append(klines, contracts.Kline{
+			Venue:     contracts.VenueBinance,
+			Symbol:    "BTCUSDT",
+			Interval:  "1m",
+			OpenTime:  baseTS + int64(i)*60_000,
+			CloseTime: baseTS + int64(i)*60_000 + 59_999,
+			Open:      px, High: px, Low: px, Close: px, Volume: 1,
+			Closed: true,
+		})
+	}
+	if err := store.Upsert(ctx, klines); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	srv.klines = store
+
+	body := `{
+		"strategy_type": "momentum",
+		"strategy_params": {"symbol":"BTCUSDT","window_size":5,"breakout_threshold":0.0001,"order_qty":0.1,"cooldown_ms":0},
+		"dataset": {
+			"source": "clickhouse",
+			"symbol": "BTCUSDT",
+			"venue": "binance",
+			"interval": "1m",
+			"num_events": 100,
+			"start_ts_ms": 1700000000000,
+			"end_ts_ms":   1700003600000
+		},
+		"start_equity": 10000
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/backtests", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	srv.HandleCreateBacktest(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var rec BacktestRecord
+	_ = json.Unmarshal(rr.Body.Bytes(), &rec)
+	if rec.Status != BacktestStatusDone {
+		t.Fatalf("status=%s err=%s", rec.Status, rec.Error)
+	}
+	if rec.Result == nil || rec.Result.Events != 50 {
+		t.Fatalf("events=%d want 50 (want all stored klines)", rec.Result.Events)
+	}
+}
+
+func TestHandleCreateBacktest_ClickHouseSourceNotConfigured(t *testing.T) {
+	srv := newBacktestServer(t) // klines == nil
+	body := `{
+		"strategy_type": "momentum",
+		"strategy_params": {"symbol":"BTCUSDT","window_size":5,"breakout_threshold":0.001,"order_qty":0.1,"cooldown_ms":0},
+		"dataset": {"source":"clickhouse","symbol":"BTCUSDT","venue":"binance","interval":"1m","num_events":10,"start_ts_ms":1,"end_ts_ms":100},
+		"start_equity": 1000
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/backtests", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	srv.HandleCreateBacktest(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var rec BacktestRecord
+	_ = json.Unmarshal(rr.Body.Bytes(), &rec)
+	if rec.Status != BacktestStatusFailed {
+		t.Fatalf("status=%s want failed", rec.Status)
+	}
+	if !strings.Contains(rec.Error, "not configured") {
+		t.Fatalf("error=%q", rec.Error)
 	}
 }
 
