@@ -1,6 +1,6 @@
 x-proxy-env: &proxy-env
   ALL_PROXY: "socks5://host.docker.internal:7890"
-  NO_PROXY: "localhost,127.0.0.1,nats,mysql,engine-core,strategy-runner,admin-api,market-ingest,market-ingest-okx,prometheus,alertmanager,grafana,loki,promtail"
+  NO_PROXY: "localhost,127.0.0.1,nats,mysql,clickhouse,engine-core,strategy-runner,admin-api,market-ingest,market-ingest-okx,prometheus,alertmanager,grafana,loki,promtail"
 
 services:
   mysql:
@@ -19,6 +19,32 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8-alpine
+    container_name: quant-clickhouse
+    ports:
+      - "8123:8123"   # HTTP interface
+      - "9000:9000"   # native TCP (used by clickhouse-go)
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    environment:
+      CLICKHOUSE_DB: quant
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-quant}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-quant}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - ./deploy/clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - quant-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   nats:
     image: nats:2.10-alpine
@@ -232,6 +258,7 @@ volumes:
   mysql-data:
   nats-data:
   loki-data:
+  clickhouse-data:
 
 networks:
   quant-net:
