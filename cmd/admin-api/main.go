@@ -82,8 +82,11 @@ func main() {
 
 	staticDir := getenv("STATIC_DIR", "./web/dist")
 
-	// --- Optional ClickHouse kline store (enables dataset.source="clickhouse") ---
-	var klineStore marketstore.KlineStore
+	// --- Optional ClickHouse store (enables kline backtest source + regime endpoints) ---
+	var (
+		klineStore  marketstore.KlineStore
+		regimeStore marketstore.RegimeStore
+	)
 	if chAddr := os.Getenv("CLICKHOUSE_ADDR"); chAddr != "" {
 		chCtx, chCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		ch, err := marketstore.NewClickHouseStore(chCtx, marketstore.ClickHouseConfig{
@@ -94,12 +97,13 @@ func main() {
 		})
 		chCancel()
 		if err != nil {
-			slog.Warn("clickhouse connect failed; backtest.source=clickhouse will be unavailable",
+			slog.Warn("clickhouse connect failed; backtest.source=clickhouse and regime endpoints will be unavailable",
 				"addr", chAddr, "error", err)
 		} else {
 			klineStore = ch
+			regimeStore = ch // same connection serves both interfaces
 			defer ch.Close()
-			slog.Info("clickhouse kline store enabled", "addr", chAddr)
+			slog.Info("clickhouse store enabled", "addr", chAddr)
 		}
 	}
 
@@ -112,6 +116,7 @@ func main() {
 		StaticDir:        staticDir,
 		FeishuWebhookURL: os.Getenv("FEISHU_WEBHOOK_URL"),
 		KlineStore:       klineStore,
+		RegimeStore:      regimeStore,
 	})
 	if err != nil {
 		slog.Error("admin api server init failed", "error", err)

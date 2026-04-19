@@ -45,6 +45,10 @@ type Server struct {
 	// when a BacktestRequest selects dataset.source="clickhouse". Nil means
 	// only the synthetic source is available.
 	klines marketstore.KlineStore
+
+	// regimes is the optional persistent store for classifier output.
+	// When nil, the /api/v1/regime/* endpoints return 503.
+	regimes marketstore.RegimeStore
 }
 
 // Config holds admin API configuration.
@@ -62,6 +66,10 @@ type Config struct {
 	// with dataset.source="clickhouse". Leaving it nil restricts the
 	// backtest API to the synthetic source.
 	KlineStore marketstore.KlineStore
+
+	// RegimeStore is the optional persistent store for regime classifier
+	// output. When nil, the /api/v1/regime/* endpoints return 503.
+	RegimeStore marketstore.RegimeStore
 }
 
 var (
@@ -110,6 +118,7 @@ func NewServer(cfg Config) (*Server, error) {
 		feishu:    feishuClient,
 		backtests: NewBacktestStore(100),
 		klines:    cfg.KlineStore,
+		regimes:   cfg.RegimeStore,
 	}, nil
 }
 
@@ -157,6 +166,11 @@ func (s *Server) Handler() http.Handler {
 	// Backtests.
 	auth.HandleFunc("/api/v1/backtests", s.routeBacktests)
 	auth.HandleFunc("/api/v1/backtests/", s.HandleGetBacktest)
+
+	// Regime (market state classifier).
+	auth.HandleFunc("/api/v1/regime/compute", s.HandleComputeRegime)
+	auth.HandleFunc("/api/v1/regime/history", s.HandleRegimeHistory)
+	auth.HandleFunc("/api/v1/regime/matrix", s.HandleRegimeMatrix)
 
 	mux.Handle("/api/v1/", s.JWTMiddleware(auth))
 
