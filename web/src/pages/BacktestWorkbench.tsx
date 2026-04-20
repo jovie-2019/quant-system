@@ -90,6 +90,34 @@ export default function BacktestWorkbench() {
     }
   }, [list, active])
 
+  // If the Parameter Optimization page handed us a prefill payload in
+  // sessionStorage (via its "Promote to Backtest" CTA), merge it into the
+  // form and clear the stash so subsequent visits start fresh.
+  useEffect(() => {
+    const raw = sessionStorage.getItem('quant_backtest_prefill')
+    if (!raw) return
+    try {
+      const payload = JSON.parse(raw) as {
+        strategy_type?: string
+        merged_params?: Record<string, unknown>
+      }
+      if (payload.strategy_type) {
+        form.setFieldValue('strategy_type', payload.strategy_type)
+      }
+      if (payload.merged_params) {
+        form.setFieldValue(
+          'strategy_params_json',
+          JSON.stringify(payload.merged_params, null, 2),
+        )
+      }
+      message.info('已从参数优化页载入候选参数')
+    } catch {
+      // Ignore — bad prefill should not break the page.
+    } finally {
+      sessionStorage.removeItem('quant_backtest_prefill')
+    }
+  }, [form])
+
   async function onSubmit() {
     let values: FormValues
     try {

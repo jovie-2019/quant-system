@@ -13,6 +13,7 @@ import Assets from './pages/Assets'
 import Settings from './pages/Settings'
 import BacktestWorkbench from './pages/BacktestWorkbench'
 import RegimeDashboard from './pages/RegimeDashboard'
+import ParameterOptimization from './pages/ParameterOptimization'
 import ProtectedRoute from './components/ProtectedRoute'
 
 export default function App() {
@@ -28,6 +29,7 @@ export default function App() {
             <Route path="/strategies" element={<Strategies />} />
             <Route path="/backtests" element={<BacktestWorkbench />} />
             <Route path="/regime" element={<RegimeDashboard />} />
+            <Route path="/optimizations" element={<ParameterOptimization />} />
             <Route path="/positions" element={<Positions />} />
             <Route path="/orders" element={<Orders />} />
             <Route path="/risk-config" element={<RiskConfig />} />
