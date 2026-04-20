@@ -41,4 +41,67 @@ CREATE TABLE IF NOT EXISTS strategy_configs (
 	FOREIGN KEY (api_key_id) REFERENCES api_keys(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 `,
+	`
+CREATE TABLE IF NOT EXISTS strategy_param_revisions (
+	id BIGINT AUTO_INCREMENT PRIMARY KEY,
+	strategy_id VARCHAR(64) NOT NULL,
+	revision BIGINT NOT NULL,
+	command_type VARCHAR(32) NOT NULL,
+	params_before TEXT,
+	params_after TEXT,
+	actor VARCHAR(128) NOT NULL,
+	reason TEXT,
+	issued_ms BIGINT NOT NULL,
+	ack_received_ms BIGINT,
+	ack_accepted TINYINT(1),
+	ack_error TEXT,
+	UNIQUE KEY uk_strategy_revision (strategy_id, revision),
+	KEY idx_strategy_issued (strategy_id, issued_ms)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+`,
+	// Lifecycle stage is carried on strategy_configs. The runner relies
+	// on EnsureSchema ignoring "duplicate column" errors so a second
+	// invocation on an already-migrated database is a no-op. See
+	// store.go for the idempotency tolerance.
+	`
+ALTER TABLE strategy_configs
+  ADD COLUMN lifecycle_stage VARCHAR(16) NOT NULL DEFAULT 'draft'
+`,
+	`
+CREATE TABLE IF NOT EXISTS strategy_lifecycle_transitions (
+	id BIGINT AUTO_INCREMENT PRIMARY KEY,
+	strategy_id VARCHAR(64) NOT NULL,
+	from_stage VARCHAR(16) NOT NULL,
+	to_stage VARCHAR(16) NOT NULL,
+	kind VARCHAR(16) NOT NULL,
+	actor VARCHAR(128) NOT NULL,
+	reason TEXT,
+	transitioned_ms BIGINT NOT NULL,
+	KEY idx_strategy_transition (strategy_id, transitioned_ms)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+`,
+	// Auto-optimiser output: each row is a parameter set a scheduled
+	// ReoptimizeJob (or a manually-triggered run) proposed as better
+	// than the strategy's currently-deployed params. Operators review
+	// pending rows and Approve (which fires the existing hot-reload
+	// path) or Reject (with a reason written back into this row).
+	`
+CREATE TABLE IF NOT EXISTS strategy_param_candidates (
+	id BIGINT AUTO_INCREMENT PRIMARY KEY,
+	strategy_id VARCHAR(64) NOT NULL,
+	origin VARCHAR(64) NOT NULL,
+	proposed_params TEXT NOT NULL,
+	baseline_params TEXT NOT NULL,
+	baseline_sharpe DOUBLE,
+	proposed_sharpe DOUBLE,
+	improvement DOUBLE,
+	status VARCHAR(16) NOT NULL DEFAULT 'pending',
+	rejection_reason TEXT,
+	created_ms BIGINT NOT NULL,
+	reviewed_ms BIGINT,
+	reviewer VARCHAR(128),
+	KEY idx_candidate_strategy_status (strategy_id, status),
+	KEY idx_candidate_status_created (status, created_ms)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+`,
 }

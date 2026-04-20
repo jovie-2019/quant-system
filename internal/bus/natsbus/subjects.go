@@ -21,3 +21,27 @@ func SubjectOrderLifecycle(accountID, symbol string) string {
 func SubjectTradeFill(accountID, symbol string) string {
 	return fmt.Sprintf("trade.fill.%s.%s", accountID, symbol)
 }
+
+// SubjectStrategyControl is the NATS subject on which admin-api publishes
+// lifecycle commands (update_params, pause, resume, shadow_on, shadow_off)
+// for a specific strategy. The strategy-runner process subscribes with a
+// consumer named "runner-ctl-<strategy_id>" so only the owning runner
+// receives the message.
+func SubjectStrategyControl(strategyID string) string {
+	return fmt.Sprintf("strategy.control.%s", strategyID)
+}
+
+// SubjectStrategyControlAck is the subject on which the runner reports the
+// outcome of a control command. admin-api subscribes here to record the
+// result into the audit log.
+func SubjectStrategyControlAck(strategyID string) string {
+	return fmt.Sprintf("strategy.control.ack.%s", strategyID)
+}
+
+// SubjectStrategyShadowIntent is the subject used when a strategy is in
+// shadow mode: the runner emits intents here instead of the live
+// strategy.intent.* stream, so a downstream consumer can measure virtual
+// PnL without the order ever reaching the exchange.
+func SubjectStrategyShadowIntent(strategyID string) string {
+	return fmt.Sprintf("strategy.shadow.%s", strategyID)
+}

@@ -11,6 +11,11 @@ import Orders from './pages/Orders'
 import RiskConfig from './pages/RiskConfig'
 import Assets from './pages/Assets'
 import Settings from './pages/Settings'
+import BacktestWorkbench from './pages/BacktestWorkbench'
+import RegimeDashboard from './pages/RegimeDashboard'
+import ParameterOptimization from './pages/ParameterOptimization'
+import LifecycleBoard from './pages/LifecycleBoard'
+import ParamCandidates from './pages/ParamCandidates'
 import ProtectedRoute from './components/ProtectedRoute'
 
 export default function App() {
@@ -24,6 +29,11 @@ export default function App() {
             <Route path="/exchanges" element={<Exchanges />} />
             <Route path="/accounts" element={<Accounts />} />
             <Route path="/strategies" element={<Strategies />} />
+            <Route path="/backtests" element={<BacktestWorkbench />} />
+            <Route path="/regime" element={<RegimeDashboard />} />
+            <Route path="/optimizations" element={<ParameterOptimization />} />
+            <Route path="/lifecycle" element={<LifecycleBoard />} />
+            <Route path="/candidates" element={<ParamCandidates />} />
             <Route path="/positions" element={<Positions />} />
             <Route path="/orders" element={<Orders />} />
             <Route path="/risk-config" element={<RiskConfig />} />

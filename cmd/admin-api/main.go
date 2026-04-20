@@ -12,13 +12,16 @@ import (
 
 	"quant-system/internal/adminapi"
 	"quant-system/internal/adminstore"
+	"quant-system/internal/bus/natsbus"
+	"quant-system/internal/crypto"
+	"quant-system/internal/marketstore"
+	"quant-system/internal/obs/logging"
+	"quant-system/internal/scheduler"
+	"quant-system/internal/store/mysqlstore"
 
 	// Blank-import strategy packages to trigger RegisterMeta in init().
 	_ "quant-system/internal/strategy/momentum"
 	_ "quant-system/internal/strategy/template"
-	"quant-system/internal/crypto"
-	"quant-system/internal/obs/logging"
-	"quant-system/internal/store/mysqlstore"
 )
 
 func main() {
@@ -81,6 +84,45 @@ func main() {
 
 	staticDir := getenv("STATIC_DIR", "./web/dist")
 
+	// --- Optional NATS bus (enables hot-reload + control ack listener) ---
+	var busClient *natsbus.Client
+	if natsURL := os.Getenv("NATS_URL"); natsURL != "" {
+		bc, err := natsbus.Connect(natsbus.Config{URL: natsURL, Name: "admin-api"})
+		if err != nil {
+			slog.Warn("nats connect failed; /strategies/:id/params will be unavailable",
+				"url", natsURL, "error", err)
+		} else {
+			busClient = bc
+			defer bc.Close()
+			slog.Info("nats bus connected", "url", natsURL)
+		}
+	}
+
+	// --- Optional ClickHouse store (enables kline backtest source + regime endpoints) ---
+	var (
+		klineStore  marketstore.KlineStore
+		regimeStore marketstore.RegimeStore
+	)
+	if chAddr := os.Getenv("CLICKHOUSE_ADDR"); chAddr != "" {
+		chCtx, chCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ch, err := marketstore.NewClickHouseStore(chCtx, marketstore.ClickHouseConfig{
+			Addrs:    []string{chAddr},
+			Database: getenv("CLICKHOUSE_DB", "quant"),
+			Username: getenv("CLICKHOUSE_USER", "quant"),
+			Password: os.Getenv("CLICKHOUSE_PASSWORD"),
+		})
+		chCancel()
+		if err != nil {
+			slog.Warn("clickhouse connect failed; backtest.source=clickhouse and regime endpoints will be unavailable",
+				"addr", chAddr, "error", err)
+		} else {
+			klineStore = ch
+			regimeStore = ch // same connection serves both interfaces
+			defer ch.Close()
+			slog.Info("clickhouse store enabled", "addr", chAddr)
+		}
+	}
+
 	apiServer, err := adminapi.NewServer(adminapi.Config{
 		Store:            store,
 		Repo:             repo,
@@ -89,6 +131,9 @@ func main() {
 		PassHash:         passHash,
 		StaticDir:        staticDir,
 		FeishuWebhookURL: os.Getenv("FEISHU_WEBHOOK_URL"),
+		KlineStore:       klineStore,
+		RegimeStore:      regimeStore,
+		Bus:              busClient,
 	})
 	if err != nil {
 		slog.Error("admin api server init failed", "error", err)
@@ -99,6 +144,50 @@ func main() {
 		Addr:              addr,
 		Handler:           apiServer.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
+	}
+
+	// Start the control-ack listener so runner acks flow into the audit log.
+	ackCtx, cancelAck := context.WithCancel(context.Background())
+	defer cancelAck()
+	if busClient != nil {
+		if err := apiServer.StartControlAckListener(ackCtx); err != nil {
+			slog.Warn("start ack listener failed", "error", err)
+		} else {
+			slog.Info("control ack listener started")
+		}
+	}
+
+	// --- Phase 7 self-optimisation loop ---
+	//
+	// The ReoptimizeJob walks live strategies, runs the optimiser on
+	// recent klines, and stages pending ParamCandidates. It depends on
+	// both the kline store (to evaluate candidates) and the NATS bus
+	// (so operators can one-click approve into a hot-reload). Missing
+	// either is a soft-fail: the handler returns 503 and the scheduled
+	// tick is a no-op.
+	schedCtx, cancelSched := context.WithCancel(context.Background())
+	defer cancelSched()
+	if klineStore != nil {
+		reopt := &adminapi.ReoptimizeJob{
+			Store:          store,
+			Klines:         klineStore,
+			Logger:         slog.Default(),
+		}
+		apiServer.SetReoptimizeJob(reopt)
+		// Default cadence: 24h. Operators can override via env for
+		// dev/staging; 0 or negative disables the schedule (manual
+		// triggers still work via /reoptimize/run-now).
+		interval := envDuration("REOPTIMIZE_INTERVAL", 24*time.Hour)
+		if interval > 0 {
+			sch := scheduler.New(scheduler.Config{Logger: slog.Default()})
+			sch.Register(reopt, interval, false)
+			go sch.Start(schedCtx)
+			slog.Info("reoptimize scheduler started", "interval", interval)
+		} else {
+			slog.Info("reoptimize scheduler disabled (REOPTIMIZE_INTERVAL=0); manual trigger only")
+		}
+	} else {
+		slog.Info("reoptimize scheduler disabled (no kline store)")
 	}
 
 	go func() {
@@ -120,6 +209,17 @@ func main() {
 		slog.Error("admin-api shutdown failed", "error", err)
 		os.Exit(1)
 	}
+}
+
+// envDuration reads a duration env var (Go's time.ParseDuration format,
+// e.g. "24h", "30m"). Empty / invalid values fall back to the default.
+func envDuration(key string, fallback time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
+		}
+	}
+	return fallback
 }
 
 func getenv(key, fallback string) string {

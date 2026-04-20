@@ -15,7 +15,9 @@ import (
 	"time"
 
 	"quant-system/internal/adminstore"
+	"quant-system/internal/bus/natsbus"
 	"quant-system/internal/crypto"
+	"quant-system/internal/marketstore"
 	"quant-system/internal/notify"
 	"quant-system/internal/obs/metrics"
 	"quant-system/internal/store/mysqlstore"
@@ -34,6 +36,33 @@ type Server struct {
 
 	riskMu  sync.RWMutex
 	riskCfg RiskConfigPayload
+
+	// backtests holds the in-memory registry of recent backtest runs. It is
+	// bounded (default 100) with oldest-first eviction. When ClickHouse lands
+	// this can be backed by a durable store without changing the handlers.
+	backtests *BacktestStore
+
+	// klines is the optional ClickHouse-backed historical kline source used
+	// when a BacktestRequest selects dataset.source="clickhouse". Nil means
+	// only the synthetic source is available.
+	klines marketstore.KlineStore
+
+	// regimes is the optional persistent store for classifier output.
+	// When nil, the /api/v1/regime/* endpoints return 503.
+	regimes marketstore.RegimeStore
+
+	// optimizations holds the in-memory registry of recent parameter-
+	// optimisation runs. Bounded with oldest-first eviction.
+	optimizations *OptimizationStore
+
+	// bus is the optional NATS client used to publish strategy control
+	// commands (hot-reload / pause / shadow) and to subscribe to their
+	// acks. Nil disables the /api/v1/strategies/:id/params endpoint.
+	bus *natsbus.Client
+
+	// reoptimize is the scheduled Phase-7 ReoptimizeJob. Nil disables
+	// the /api/v1/reoptimize/run-now endpoint.
+	reoptimize *ReoptimizeJob
 }
 
 // Config holds admin API configuration.
@@ -46,6 +75,20 @@ type Config struct {
 	Logger           *slog.Logger
 	StaticDir        string // directory for static files (empty = disabled)
 	FeishuWebhookURL string // Feishu webhook URL for alert forwarding (empty = disabled)
+
+	// KlineStore is an optional historical kline source used by backtests
+	// with dataset.source="clickhouse". Leaving it nil restricts the
+	// backtest API to the synthetic source.
+	KlineStore marketstore.KlineStore
+
+	// RegimeStore is the optional persistent store for regime classifier
+	// output. When nil, the /api/v1/regime/* endpoints return 503.
+	RegimeStore marketstore.RegimeStore
+
+	// Bus is an optional NATS client used to publish strategy control
+	// commands (hot-reload / pause / shadow) and subscribe to their
+	// acks. Nil disables the params endpoint.
+	Bus *natsbus.Client
 }
 
 var (
@@ -58,6 +101,12 @@ var (
 	// ErrInvalidJWTSecret is returned when JWTSecret is not valid hex.
 	ErrInvalidJWTSecret = errors.New("adminapi: invalid JWT secret")
 )
+
+// SetReoptimizeJob wires the ReoptimizeJob that /reoptimize/run-now
+// dispatches. The scheduler goroutine owned by cmd/admin-api/main.go
+// runs the same pointer on its nightly tick, so manual and scheduled
+// invocations share state.
+func (s *Server) SetReoptimizeJob(j *ReoptimizeJob) { s.reoptimize = j }
 
 // NewServer creates a new admin API server.
 func NewServer(cfg Config) (*Server, error) {
@@ -92,6 +141,11 @@ func NewServer(cfg Config) (*Server, error) {
 		logger:    logger,
 		staticDir: cfg.StaticDir,
 		feishu:    feishuClient,
+		backtests:     NewBacktestStore(100),
+		klines:        cfg.KlineStore,
+		regimes:       cfg.RegimeStore,
+		optimizations: NewOptimizationStore(50),
+		bus:           cfg.Bus,
 	}, nil
 }
 
@@ -120,6 +174,7 @@ func (s *Server) Handler() http.Handler {
 
 	// Strategies.
 	auth.HandleFunc("/api/v1/strategies/stop-all", s.HandleStopAll)
+	auth.HandleFunc("/api/v1/strategies/lifecycle-board", s.HandleLifecycleBoard)
 	auth.HandleFunc("/api/v1/strategies", s.routeStrategies)
 	auth.HandleFunc("/api/v1/strategies/", s.routeStrategyByID)
 
@@ -135,6 +190,26 @@ func (s *Server) Handler() http.Handler {
 
 	// System status.
 	auth.HandleFunc("/api/v1/system/status", s.HandleSystemStatus)
+
+	// Backtests.
+	auth.HandleFunc("/api/v1/backtests", s.routeBacktests)
+	auth.HandleFunc("/api/v1/backtests/", s.HandleGetBacktest)
+
+	// Regime (market state classifier).
+	auth.HandleFunc("/api/v1/regime/compute", s.HandleComputeRegime)
+	auth.HandleFunc("/api/v1/regime/history", s.HandleRegimeHistory)
+	auth.HandleFunc("/api/v1/regime/matrix", s.HandleRegimeMatrix)
+
+	// Parameter optimisation.
+	auth.HandleFunc("/api/v1/optimizations", s.routeOptimizations)
+	auth.HandleFunc("/api/v1/optimizations/", s.HandleGetOptimization)
+
+	// Param candidates (Phase 7 auto-optimisation output).
+	auth.HandleFunc("/api/v1/param-candidates", s.HandleListParamCandidates)
+	auth.HandleFunc("/api/v1/param-candidates/", s.routeParamCandidateByID)
+
+	// Manual trigger for the nightly reoptimise job.
+	auth.HandleFunc("/api/v1/reoptimize/run-now", s.HandleRunReoptimizeNow)
 
 	mux.Handle("/api/v1/", s.JWTMiddleware(auth))
 
@@ -280,6 +355,22 @@ func (s *Server) routeStrategyByID(w http.ResponseWriter, r *http.Request) {
 		case "logs":
 			s.HandleStrategyLogs(w, r)
 			return
+		case "params":
+			s.HandleProposeStrategyParams(w, r)
+			return
+		case "revisions":
+			s.HandleListStrategyRevisions(w, r)
+			return
+		case "lifecycle":
+			if r.Method == http.MethodGet {
+				s.HandleGetStrategyLifecycle(w, r)
+			} else {
+				s.HandleProposeStrategyLifecycle(w, r)
+			}
+			return
+		case "health":
+			s.HandleStrategyHealth(w, r)
+			return
 		}
 	}
 
@@ -292,6 +383,48 @@ func (s *Server) routeStrategyByID(w http.ResponseWriter, r *http.Request) {
 		s.HandleDeleteStrategy(w, r)
 	default:
 		s.writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "GET, PUT or DELETE required")
+	}
+}
+
+// routeParamCandidateByID dispatches GET / POST for
+// /api/v1/param-candidates/:id[/approve|/reject] — mirroring the
+// stop-all / start / stop pattern used elsewhere.
+func (s *Server) routeParamCandidateByID(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/param-candidates/")
+	if parts := strings.SplitN(path, "/", 2); len(parts) == 2 {
+		switch parts[1] {
+		case "approve":
+			s.HandleApproveParamCandidate(w, r)
+			return
+		case "reject":
+			s.HandleRejectParamCandidate(w, r)
+			return
+		}
+	}
+	s.HandleGetParamCandidate(w, r)
+}
+
+// routeOptimizations dispatches GET/POST for /api/v1/optimizations.
+func (s *Server) routeOptimizations(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		s.HandleListOptimizations(w, r)
+	case http.MethodPost:
+		s.HandleCreateOptimization(w, r)
+	default:
+		s.writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "GET or POST required")
+	}
+}
+
+// routeBacktests dispatches GET/POST for /api/v1/backtests.
+func (s *Server) routeBacktests(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		s.HandleListBacktests(w, r)
+	case http.MethodPost:
+		s.HandleCreateBacktest(w, r)
+	default:
+		s.writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "GET or POST required")
 	}
 }
 
