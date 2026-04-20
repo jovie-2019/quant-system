@@ -25,6 +25,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldfl
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/strategy-runner ./cmd/strategy-runner
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/market-ingest ./cmd/market-ingest
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/admin-api ./cmd/admin-api
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/kline-backfill ./cmd/kline-backfill
 
 FROM alpine:3.21
 
@@ -33,6 +34,7 @@ COPY --from=builder /out/engine-core /app/engine-core
 COPY --from=builder /out/strategy-runner /app/strategy-runner
 COPY --from=builder /out/market-ingest /app/market-ingest
 COPY --from=builder /out/admin-api /app/admin-api
+COPY --from=builder /out/kline-backfill /app/kline-backfill
 COPY --from=frontend /web/dist /app/web/dist
 
 EXPOSE 8080

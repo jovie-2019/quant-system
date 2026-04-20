@@ -5,14 +5,46 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"golang.org/x/net/proxy"
+
 	"quant-system/pkg/contracts"
 )
+
+// defaultHTTPClient builds an http.Client that honours ALL_PROXY for
+// SOCKS5 proxying. Operators running in networks that require a proxy
+// (Mainland China workstations commonly set ALL_PROXY=socks5://...)
+// expect every outbound HTTP call to route through it, mirroring the
+// behaviour of internal/adapter's rest client.
+func defaultHTTPClient(timeout time.Duration) *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	for _, env := range []string{"ALL_PROXY", "all_proxy"} {
+		val := os.Getenv(env)
+		if !strings.HasPrefix(val, "socks5://") {
+			continue
+		}
+		addr := strings.TrimPrefix(val, "socks5://")
+		dialer, err := proxy.SOCKS5("tcp", addr, nil, proxy.Direct)
+		if err != nil {
+			slog.Warn("marketstore: socks5 proxy init failed", "addr", addr, "error", err)
+			break
+		}
+		transport.DialContext = func(_ context.Context, network, a string) (net.Conn, error) {
+			return dialer.Dial(network, a)
+		}
+		slog.Info("marketstore: Binance REST using SOCKS5 proxy", "addr", addr)
+		break
+	}
+	return &http.Client{Timeout: timeout, Transport: transport}
+}
 
 // BinanceFetcher pulls historical klines from the Binance Spot REST API with
 // an explicit [startMS, endMS] window. The existing marketdata.BinanceFeed
@@ -40,7 +72,7 @@ func NewBinanceFetcher(cfg BinanceFetcherConfig) *BinanceFetcher {
 	}
 	client := cfg.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: 15 * time.Second}
+		client = defaultHTTPClient(15 * time.Second)
 	}
 	return &BinanceFetcher{baseURL: base, client: client}
 }

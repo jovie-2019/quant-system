@@ -24,7 +24,6 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -84,9 +83,10 @@ func main() {
 	if !strings.EqualFold(*venue, "binance") {
 		fatal("only -venue=binance is supported in this build; okx support is a follow-up")
 	}
+	// Leave HTTPClient nil so the fetcher picks up SOCKS5 via ALL_PROXY
+	// (common deployment pattern for this operator profile).
 	fetcher := marketstore.NewBinanceFetcher(marketstore.BinanceFetcherConfig{
-		BaseURL:    *binanceBase,
-		HTTPClient: &http.Client{Timeout: 15 * time.Second},
+		BaseURL: *binanceBase,
 	})
 
 	// --- Store ---

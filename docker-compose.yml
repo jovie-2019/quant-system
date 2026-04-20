@@ -41,10 +41,14 @@ services:
     networks:
       - quant-net
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      # The alpine image ships busybox wget which cannot resolve
+      # "localhost" reliably; clickhouse-client is bundled in the
+      # image and is the canonical readiness probe.
+      test: ["CMD-SHELL", "clickhouse-client --user $$CLICKHOUSE_USER --password $$CLICKHOUSE_PASSWORD --query 'SELECT 1' >/dev/null 2>&1"]
       interval: 10s
       timeout: 5s
       retries: 10
+      start_period: 30s
 
   nats:
     image: nats:2.10-alpine
