@@ -117,24 +117,38 @@ func main() {
 
 	// -----------------------------------------------------------------------
 	// Strategy runtime
+	//
+	// Build order matters: the IntentSink is gated by the control handler,
+	// so we construct the handler first (which needs a strategy instance)
+	// and then wrap the live sink with pause/shadow routing.
 	// -----------------------------------------------------------------------
-	intentSink, err := strategyrunner.NewNATSIntentSink(client)
+	currentStrategy, err := createStrategy(cfg)
+	if err != nil {
+		slog.Error("create strategy failed", "error", err)
+		os.Exit(1)
+	}
+
+	controlHandler, err := strategyrunner.NewControlHandler(client, currentStrategy, strategyrunner.ControlConfig{
+		StrategyID: cfg.StrategyID,
+	})
+	if err != nil {
+		slog.Error("control handler init failed", "error", err)
+		os.Exit(1)
+	}
+
+	liveIntentSink, err := strategyrunner.NewNATSIntentSink(client)
 	if err != nil {
 		slog.Error("intent sink init failed", "error", err)
 		os.Exit(1)
 	}
+	intentSink := strategyrunner.GatedIntentSink(controlHandler, liveIntentSink, client)
+
 	runtime, err := strategy.NewInMemoryRuntime(intentSink)
 	if err != nil {
 		slog.Error("runtime init failed", "error", err)
 		os.Exit(1)
 	}
 
-	// Create and register the initial strategy instance.
-	currentStrategy, err := createStrategy(cfg)
-	if err != nil {
-		slog.Error("create strategy failed", "error", err)
-		os.Exit(1)
-	}
 	if err := runtime.Register(currentStrategy); err != nil {
 		slog.Error("register strategy failed", "error", err)
 		os.Exit(1)
@@ -144,6 +158,18 @@ func main() {
 		"strategy_id", currentStrategy.ID(),
 		"strategy_type", cfg.StrategyType,
 	)
+
+	// Subscribe to the strategy's control subject so admin-api (or an
+	// optimiser pipeline) can hot-reload params / pause / shadow-mode
+	// without restarting this process.
+	ctlSub, err := controlHandler.Start(ctx)
+	if err != nil {
+		slog.Error("control subscribe failed", "error", err)
+		os.Exit(1)
+	}
+	defer ctlSub.Unsubscribe()
+	slog.Info("control channel subscribed",
+		"subject", natsbus.SubjectStrategyControl(cfg.StrategyID))
 
 	// -----------------------------------------------------------------------
 	// NATS subscription loop (market events -> strategy)
