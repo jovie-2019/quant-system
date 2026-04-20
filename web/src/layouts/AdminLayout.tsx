@@ -18,6 +18,7 @@ import {
   RadarChartOutlined,
   ThunderboltOutlined,
   DeploymentUnitOutlined,
+  RobotOutlined,
 } from '@ant-design/icons'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -32,6 +33,7 @@ const menuItems = [
   { key: '/regime', icon: <RadarChartOutlined />, label: '市场状态' },
   { key: '/optimizations', icon: <ThunderboltOutlined />, label: '参数优化' },
   { key: '/lifecycle', icon: <DeploymentUnitOutlined />, label: '生命周期' },
+  { key: '/candidates', icon: <RobotOutlined />, label: '候选参数' },
   { key: '/positions', icon: <FundOutlined />, label: '持仓' },
   { key: '/orders', icon: <OrderedListOutlined />, label: '订单' },
   { key: '/risk-config', icon: <SafetyOutlined />, label: '风控配置' },
