@@ -2,6 +2,7 @@ package strategy
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -32,6 +33,19 @@ type KlineHandler interface {
 // depth should implement this. The runtime calls OnDepth on each update.
 type DepthHandler interface {
 	OnDepth(depth contracts.DepthSnapshot) []OrderIntent
+}
+
+// ParamReloader is an optional interface implemented by strategies that
+// support hot-swapping their parameter set without rebuilding the
+// instance. Strategies that implement this preserve their internal state
+// (indicators, open positions, rolling windows) across the swap when
+// possible; fields that cannot be hot-swapped should be rejected with
+// a descriptive error so the caller can fall back to full replacement.
+type ParamReloader interface {
+	// ApplyParams validates raw and, on success, atomically swaps the
+	// strategy's parameter set. Implementations should be safe to call
+	// concurrently with OnMarket/OnKline/OnDepth.
+	ApplyParams(raw json.RawMessage) error
 }
 
 type IntentSink func(ctx context.Context, intent OrderIntent) error
