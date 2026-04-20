@@ -17,10 +17,11 @@ import {
   Empty,
   Tooltip,
 } from 'antd';
-import { PlusOutlined, ExclamationCircleOutlined, BookOutlined, ReloadOutlined, FileTextOutlined } from '@ant-design/icons';
+import { PlusOutlined, ExclamationCircleOutlined, BookOutlined, ReloadOutlined, FileTextOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import api from '../api/client';
 import type { Exchange, APIKey, StrategyConfig, StrategyMeta, LogLine } from '../api/types';
+import StrategyParamsDrawer from '../components/StrategyParamsDrawer';
 
 const Strategies: React.FC = () => {
   const [data, setData] = useState<StrategyConfig[]>([]);
@@ -47,7 +48,11 @@ const Strategies: React.FC = () => {
   const [logLoading, setLogLoading] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [expandedFields, setExpandedFields] = useState<Record<number, boolean>>({});
+  const [paramsDrawerStrategy, setParamsDrawerStrategy] = useState<StrategyConfig | null>(null);
   const [form] = Form.useForm();
+
+  const openParamsDrawer = (record: StrategyConfig) => setParamsDrawerStrategy(record);
+  const closeParamsDrawer = () => setParamsDrawerStrategy(null);
 
   const selectedExchangeId = Form.useWatch('exchange_id', form);
 
@@ -388,6 +393,16 @@ const Strategies: React.FC = () => {
             >
               日志
             </Button>
+            <Button
+              type="link"
+              size="small"
+              icon={<ThunderboltOutlined />}
+              onClick={() => openParamsDrawer(record)}
+              disabled={!isRunning}
+              title={isRunning ? '热更新参数（不重启）' : '先启动策略才能热更新'}
+            >
+              参数
+            </Button>
             <Popconfirm
               title="确认删除该策略？"
               onConfirm={() => handleDelete(record.id)}
@@ -651,6 +666,22 @@ const Strategies: React.FC = () => {
           )}
         </Spin>
       </Drawer>
+
+      <StrategyParamsDrawer
+        open={paramsDrawerStrategy !== null}
+        onClose={closeParamsDrawer}
+        strategyDBID={paramsDrawerStrategy?.id ?? null}
+        strategyLabel={
+          paramsDrawerStrategy
+            ? `${paramsDrawerStrategy.strategy_id} (${paramsDrawerStrategy.strategy_type})`
+            : ''
+        }
+        currentParamsJSON={
+          paramsDrawerStrategy
+            ? JSON.stringify(paramsDrawerStrategy.config ?? {}, null, 2)
+            : ''
+        }
+      />
     </div>
   );
 };
