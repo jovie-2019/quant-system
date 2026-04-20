@@ -16,6 +16,7 @@ import (
 	"quant-system/internal/crypto"
 	"quant-system/internal/marketstore"
 	"quant-system/internal/obs/logging"
+	"quant-system/internal/scheduler"
 	"quant-system/internal/store/mysqlstore"
 
 	// Blank-import strategy packages to trigger RegisterMeta in init().
@@ -156,6 +157,39 @@ func main() {
 		}
 	}
 
+	// --- Phase 7 self-optimisation loop ---
+	//
+	// The ReoptimizeJob walks live strategies, runs the optimiser on
+	// recent klines, and stages pending ParamCandidates. It depends on
+	// both the kline store (to evaluate candidates) and the NATS bus
+	// (so operators can one-click approve into a hot-reload). Missing
+	// either is a soft-fail: the handler returns 503 and the scheduled
+	// tick is a no-op.
+	schedCtx, cancelSched := context.WithCancel(context.Background())
+	defer cancelSched()
+	if klineStore != nil {
+		reopt := &adminapi.ReoptimizeJob{
+			Store:          store,
+			Klines:         klineStore,
+			Logger:         slog.Default(),
+		}
+		apiServer.SetReoptimizeJob(reopt)
+		// Default cadence: 24h. Operators can override via env for
+		// dev/staging; 0 or negative disables the schedule (manual
+		// triggers still work via /reoptimize/run-now).
+		interval := envDuration("REOPTIMIZE_INTERVAL", 24*time.Hour)
+		if interval > 0 {
+			sch := scheduler.New(scheduler.Config{Logger: slog.Default()})
+			sch.Register(reopt, interval, false)
+			go sch.Start(schedCtx)
+			slog.Info("reoptimize scheduler started", "interval", interval)
+		} else {
+			slog.Info("reoptimize scheduler disabled (REOPTIMIZE_INTERVAL=0); manual trigger only")
+		}
+	} else {
+		slog.Info("reoptimize scheduler disabled (no kline store)")
+	}
+
 	go func() {
 		slog.Info("admin-api listening", "addr", addr)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -175,6 +209,17 @@ func main() {
 		slog.Error("admin-api shutdown failed", "error", err)
 		os.Exit(1)
 	}
+}
+
+// envDuration reads a duration env var (Go's time.ParseDuration format,
+// e.g. "24h", "30m"). Empty / invalid values fall back to the default.
+func envDuration(key string, fallback time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
+		}
+	}
+	return fallback
 }
 
 func getenv(key, fallback string) string {

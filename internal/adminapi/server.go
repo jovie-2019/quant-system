@@ -59,6 +59,10 @@ type Server struct {
 	// commands (hot-reload / pause / shadow) and to subscribe to their
 	// acks. Nil disables the /api/v1/strategies/:id/params endpoint.
 	bus *natsbus.Client
+
+	// reoptimize is the scheduled Phase-7 ReoptimizeJob. Nil disables
+	// the /api/v1/reoptimize/run-now endpoint.
+	reoptimize *ReoptimizeJob
 }
 
 // Config holds admin API configuration.
@@ -97,6 +101,12 @@ var (
 	// ErrInvalidJWTSecret is returned when JWTSecret is not valid hex.
 	ErrInvalidJWTSecret = errors.New("adminapi: invalid JWT secret")
 )
+
+// SetReoptimizeJob wires the ReoptimizeJob that /reoptimize/run-now
+// dispatches. The scheduler goroutine owned by cmd/admin-api/main.go
+// runs the same pointer on its nightly tick, so manual and scheduled
+// invocations share state.
+func (s *Server) SetReoptimizeJob(j *ReoptimizeJob) { s.reoptimize = j }
 
 // NewServer creates a new admin API server.
 func NewServer(cfg Config) (*Server, error) {
@@ -193,6 +203,13 @@ func (s *Server) Handler() http.Handler {
 	// Parameter optimisation.
 	auth.HandleFunc("/api/v1/optimizations", s.routeOptimizations)
 	auth.HandleFunc("/api/v1/optimizations/", s.HandleGetOptimization)
+
+	// Param candidates (Phase 7 auto-optimisation output).
+	auth.HandleFunc("/api/v1/param-candidates", s.HandleListParamCandidates)
+	auth.HandleFunc("/api/v1/param-candidates/", s.routeParamCandidateByID)
+
+	// Manual trigger for the nightly reoptimise job.
+	auth.HandleFunc("/api/v1/reoptimize/run-now", s.HandleRunReoptimizeNow)
 
 	mux.Handle("/api/v1/", s.JWTMiddleware(auth))
 
@@ -367,6 +384,24 @@ func (s *Server) routeStrategyByID(w http.ResponseWriter, r *http.Request) {
 	default:
 		s.writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "GET, PUT or DELETE required")
 	}
+}
+
+// routeParamCandidateByID dispatches GET / POST for
+// /api/v1/param-candidates/:id[/approve|/reject] — mirroring the
+// stop-all / start / stop pattern used elsewhere.
+func (s *Server) routeParamCandidateByID(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/param-candidates/")
+	if parts := strings.SplitN(path, "/", 2); len(parts) == 2 {
+		switch parts[1] {
+		case "approve":
+			s.HandleApproveParamCandidate(w, r)
+			return
+		case "reject":
+			s.HandleRejectParamCandidate(w, r)
+			return
+		}
+	}
+	s.HandleGetParamCandidate(w, r)
 }
 
 // routeOptimizations dispatches GET/POST for /api/v1/optimizations.

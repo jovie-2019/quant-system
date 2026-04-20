@@ -80,4 +80,28 @@ CREATE TABLE IF NOT EXISTS strategy_lifecycle_transitions (
 	KEY idx_strategy_transition (strategy_id, transitioned_ms)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 `,
+	// Auto-optimiser output: each row is a parameter set a scheduled
+	// ReoptimizeJob (or a manually-triggered run) proposed as better
+	// than the strategy's currently-deployed params. Operators review
+	// pending rows and Approve (which fires the existing hot-reload
+	// path) or Reject (with a reason written back into this row).
+	`
+CREATE TABLE IF NOT EXISTS strategy_param_candidates (
+	id BIGINT AUTO_INCREMENT PRIMARY KEY,
+	strategy_id VARCHAR(64) NOT NULL,
+	origin VARCHAR(64) NOT NULL,
+	proposed_params TEXT NOT NULL,
+	baseline_params TEXT NOT NULL,
+	baseline_sharpe DOUBLE,
+	proposed_sharpe DOUBLE,
+	improvement DOUBLE,
+	status VARCHAR(16) NOT NULL DEFAULT 'pending',
+	rejection_reason TEXT,
+	created_ms BIGINT NOT NULL,
+	reviewed_ms BIGINT,
+	reviewer VARCHAR(128),
+	KEY idx_candidate_strategy_status (strategy_id, status),
+	KEY idx_candidate_status_created (status, created_ms)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+`,
 }
