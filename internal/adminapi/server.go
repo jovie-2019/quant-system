@@ -49,6 +49,10 @@ type Server struct {
 	// regimes is the optional persistent store for classifier output.
 	// When nil, the /api/v1/regime/* endpoints return 503.
 	regimes marketstore.RegimeStore
+
+	// optimizations holds the in-memory registry of recent parameter-
+	// optimisation runs. Bounded with oldest-first eviction.
+	optimizations *OptimizationStore
 }
 
 // Config holds admin API configuration.
@@ -116,9 +120,10 @@ func NewServer(cfg Config) (*Server, error) {
 		logger:    logger,
 		staticDir: cfg.StaticDir,
 		feishu:    feishuClient,
-		backtests: NewBacktestStore(100),
-		klines:    cfg.KlineStore,
-		regimes:   cfg.RegimeStore,
+		backtests:     NewBacktestStore(100),
+		klines:        cfg.KlineStore,
+		regimes:       cfg.RegimeStore,
+		optimizations: NewOptimizationStore(50),
 	}, nil
 }
 
@@ -171,6 +176,10 @@ func (s *Server) Handler() http.Handler {
 	auth.HandleFunc("/api/v1/regime/compute", s.HandleComputeRegime)
 	auth.HandleFunc("/api/v1/regime/history", s.HandleRegimeHistory)
 	auth.HandleFunc("/api/v1/regime/matrix", s.HandleRegimeMatrix)
+
+	// Parameter optimisation.
+	auth.HandleFunc("/api/v1/optimizations", s.routeOptimizations)
+	auth.HandleFunc("/api/v1/optimizations/", s.HandleGetOptimization)
 
 	mux.Handle("/api/v1/", s.JWTMiddleware(auth))
 
@@ -328,6 +337,18 @@ func (s *Server) routeStrategyByID(w http.ResponseWriter, r *http.Request) {
 		s.HandleDeleteStrategy(w, r)
 	default:
 		s.writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "GET, PUT or DELETE required")
+	}
+}
+
+// routeOptimizations dispatches GET/POST for /api/v1/optimizations.
+func (s *Server) routeOptimizations(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		s.HandleListOptimizations(w, r)
+	case http.MethodPost:
+		s.HandleCreateOptimization(w, r)
+	default:
+		s.writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "GET or POST required")
 	}
 }
 
