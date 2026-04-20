@@ -12,6 +12,7 @@ import (
 
 	"quant-system/internal/adminapi"
 	"quant-system/internal/adminstore"
+	"quant-system/internal/bus/natsbus"
 	"quant-system/internal/crypto"
 	"quant-system/internal/marketstore"
 	"quant-system/internal/obs/logging"
@@ -82,6 +83,20 @@ func main() {
 
 	staticDir := getenv("STATIC_DIR", "./web/dist")
 
+	// --- Optional NATS bus (enables hot-reload + control ack listener) ---
+	var busClient *natsbus.Client
+	if natsURL := os.Getenv("NATS_URL"); natsURL != "" {
+		bc, err := natsbus.Connect(natsbus.Config{URL: natsURL, Name: "admin-api"})
+		if err != nil {
+			slog.Warn("nats connect failed; /strategies/:id/params will be unavailable",
+				"url", natsURL, "error", err)
+		} else {
+			busClient = bc
+			defer bc.Close()
+			slog.Info("nats bus connected", "url", natsURL)
+		}
+	}
+
 	// --- Optional ClickHouse store (enables kline backtest source + regime endpoints) ---
 	var (
 		klineStore  marketstore.KlineStore
@@ -117,6 +132,7 @@ func main() {
 		FeishuWebhookURL: os.Getenv("FEISHU_WEBHOOK_URL"),
 		KlineStore:       klineStore,
 		RegimeStore:      regimeStore,
+		Bus:              busClient,
 	})
 	if err != nil {
 		slog.Error("admin api server init failed", "error", err)
@@ -127,6 +143,17 @@ func main() {
 		Addr:              addr,
 		Handler:           apiServer.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
+	}
+
+	// Start the control-ack listener so runner acks flow into the audit log.
+	ackCtx, cancelAck := context.WithCancel(context.Background())
+	defer cancelAck()
+	if busClient != nil {
+		if err := apiServer.StartControlAckListener(ackCtx); err != nil {
+			slog.Warn("start ack listener failed", "error", err)
+		} else {
+			slog.Info("control ack listener started")
+		}
 	}
 
 	go func() {

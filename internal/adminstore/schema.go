@@ -41,4 +41,22 @@ CREATE TABLE IF NOT EXISTS strategy_configs (
 	FOREIGN KEY (api_key_id) REFERENCES api_keys(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 `,
+	`
+CREATE TABLE IF NOT EXISTS strategy_param_revisions (
+	id BIGINT AUTO_INCREMENT PRIMARY KEY,
+	strategy_id VARCHAR(64) NOT NULL,
+	revision BIGINT NOT NULL,
+	command_type VARCHAR(32) NOT NULL,
+	params_before TEXT,
+	params_after TEXT,
+	actor VARCHAR(128) NOT NULL,
+	reason TEXT,
+	issued_ms BIGINT NOT NULL,
+	ack_received_ms BIGINT,
+	ack_accepted TINYINT(1),
+	ack_error TEXT,
+	UNIQUE KEY uk_strategy_revision (strategy_id, revision),
+	KEY idx_strategy_issued (strategy_id, issued_ms)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+`,
 }

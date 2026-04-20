@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"quant-system/internal/adminstore"
+	"quant-system/internal/bus/natsbus"
 	"quant-system/internal/crypto"
 	"quant-system/internal/marketstore"
 	"quant-system/internal/notify"
@@ -53,6 +54,11 @@ type Server struct {
 	// optimizations holds the in-memory registry of recent parameter-
 	// optimisation runs. Bounded with oldest-first eviction.
 	optimizations *OptimizationStore
+
+	// bus is the optional NATS client used to publish strategy control
+	// commands (hot-reload / pause / shadow) and to subscribe to their
+	// acks. Nil disables the /api/v1/strategies/:id/params endpoint.
+	bus *natsbus.Client
 }
 
 // Config holds admin API configuration.
@@ -74,6 +80,11 @@ type Config struct {
 	// RegimeStore is the optional persistent store for regime classifier
 	// output. When nil, the /api/v1/regime/* endpoints return 503.
 	RegimeStore marketstore.RegimeStore
+
+	// Bus is an optional NATS client used to publish strategy control
+	// commands (hot-reload / pause / shadow) and subscribe to their
+	// acks. Nil disables the params endpoint.
+	Bus *natsbus.Client
 }
 
 var (
@@ -124,6 +135,7 @@ func NewServer(cfg Config) (*Server, error) {
 		klines:        cfg.KlineStore,
 		regimes:       cfg.RegimeStore,
 		optimizations: NewOptimizationStore(50),
+		bus:           cfg.Bus,
 	}, nil
 }
 
@@ -324,6 +336,12 @@ func (s *Server) routeStrategyByID(w http.ResponseWriter, r *http.Request) {
 			return
 		case "logs":
 			s.HandleStrategyLogs(w, r)
+			return
+		case "params":
+			s.HandleProposeStrategyParams(w, r)
+			return
+		case "revisions":
+			s.HandleListStrategyRevisions(w, r)
 			return
 		}
 	}
