@@ -164,6 +164,7 @@ func (s *Server) Handler() http.Handler {
 
 	// Strategies.
 	auth.HandleFunc("/api/v1/strategies/stop-all", s.HandleStopAll)
+	auth.HandleFunc("/api/v1/strategies/lifecycle-board", s.HandleLifecycleBoard)
 	auth.HandleFunc("/api/v1/strategies", s.routeStrategies)
 	auth.HandleFunc("/api/v1/strategies/", s.routeStrategyByID)
 
@@ -342,6 +343,16 @@ func (s *Server) routeStrategyByID(w http.ResponseWriter, r *http.Request) {
 			return
 		case "revisions":
 			s.HandleListStrategyRevisions(w, r)
+			return
+		case "lifecycle":
+			if r.Method == http.MethodGet {
+				s.HandleGetStrategyLifecycle(w, r)
+			} else {
+				s.HandleProposeStrategyLifecycle(w, r)
+			}
+			return
+		case "health":
+			s.HandleStrategyHealth(w, r)
 			return
 		}
 	}

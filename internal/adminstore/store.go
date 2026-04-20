@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -68,14 +69,34 @@ func (s *Store) DB() *sql.DB {
 	return s.db
 }
 
-// EnsureSchema creates all admin tables if they do not exist.
+// EnsureSchema creates all admin tables if they do not exist. The
+// migration runner is idempotent: MySQL error 1060 ("Duplicate column
+// name") is treated as a no-op so an ALTER TABLE ADD COLUMN on an
+// already-migrated database doesn't abort EnsureSchema. This matters
+// because MySQL 8.0's ADD COLUMN IF NOT EXISTS only lands in 8.0.29+
+// and the production compose file does not pin that minor.
 func (s *Store) EnsureSchema(ctx context.Context) error {
 	for _, stmt := range adminDDL {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
+			if isDuplicateColumn(err) {
+				continue
+			}
 			return fmt.Errorf("adminstore: ensure schema: %w", err)
 		}
 	}
 	return nil
+}
+
+// isDuplicateColumn matches MySQL error 1060 without taking a hard
+// dependency on the driver-specific error type. The text match is
+// stable across go-sql-driver/mysql versions.
+func isDuplicateColumn(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "Error 1060") ||
+		strings.Contains(msg, "Duplicate column name")
 }
 
 // ---------------------------------------------------------------------------

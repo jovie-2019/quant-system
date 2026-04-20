@@ -59,4 +59,25 @@ CREATE TABLE IF NOT EXISTS strategy_param_revisions (
 	KEY idx_strategy_issued (strategy_id, issued_ms)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 `,
+	// Lifecycle stage is carried on strategy_configs. The runner relies
+	// on EnsureSchema ignoring "duplicate column" errors so a second
+	// invocation on an already-migrated database is a no-op. See
+	// store.go for the idempotency tolerance.
+	`
+ALTER TABLE strategy_configs
+  ADD COLUMN lifecycle_stage VARCHAR(16) NOT NULL DEFAULT 'draft'
+`,
+	`
+CREATE TABLE IF NOT EXISTS strategy_lifecycle_transitions (
+	id BIGINT AUTO_INCREMENT PRIMARY KEY,
+	strategy_id VARCHAR(64) NOT NULL,
+	from_stage VARCHAR(16) NOT NULL,
+	to_stage VARCHAR(16) NOT NULL,
+	kind VARCHAR(16) NOT NULL,
+	actor VARCHAR(128) NOT NULL,
+	reason TEXT,
+	transitioned_ms BIGINT NOT NULL,
+	KEY idx_strategy_transition (strategy_id, transitioned_ms)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+`,
 }
